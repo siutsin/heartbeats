@@ -1,0 +1,46 @@
+name: E2E Test
+
+on:
+  push:
+    branches:
+    - master
+  pull_request:
+    branches:
+    - master
+
+jobs:
+  test-e2e:
+    name: E2E Test
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Go environment
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: go.mod
+
+    - name: Cache Go dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/go/pkg/mod
+          ~/.cache/go-build
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+
+    - name: Install kind
+      run: go install sigs.k8s.io/kind@latest
+
+    - name: Verify kind installation
+      run: kind version
+
+    - name: Create kind cluster
+      run: kind create cluster
+
+    - name: Run e2e tests
+      run: |
+        go mod tidy
+        make test-e2e
