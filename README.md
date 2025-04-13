@@ -5,7 +5,7 @@ A Kubernetes operator that monitors the health of HTTP endpoints by periodically
 ## Disclaimer
 
 > [!WARNING]  
-> AI-GENERATED CODE AHEAD!
+> AI-GENERATED CODE AHEAD! Every single line of code in this repository is generated.
 
 This entire repo is the result of me going "Hey, I wonder if I can vibe-code a Kubernetes operator in a weekend?"
 
