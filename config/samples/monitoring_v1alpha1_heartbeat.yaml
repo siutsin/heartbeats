@@ -1,0 +1,17 @@
+apiVersion: monitoring.siutsin.com/v1alpha1
+kind: Heartbeat
+metadata:
+  labels:
+    app.kubernetes.io/name: heartbeats-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: heartbeat-sample
+spec:
+  endpointsSecret:
+    name: heartbeat-endpoints
+    targetEndpointKey: targetEndpoint
+    healthyEndpointKey: healthyEndpoint
+    unhealthyEndpointKey: unhealthyEndpoint
+  expectedStatusCodeRanges:
+  - min: 200
+    max: 299
+  interval: 30s

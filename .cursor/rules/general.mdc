@@ -1,0 +1,9 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Your rule content
+
+- Write comments and documentation in British English.
+- Markdown should be checked against markdownlint rules.
