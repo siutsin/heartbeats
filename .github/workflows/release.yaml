@@ -26,6 +26,24 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
         with:
           persist-credentials: false
+          fetch-depth: 0
+
+      - name: Check changed files
+        id: check_files
+        run: |
+          CHANGED_FILES=$(git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }})
+          ONLY_KUSTOMIZATION=true
+          for file in $CHANGED_FILES; do
+            if [ "$file" != "config/manager/kustomization.yaml" ]; then
+              ONLY_KUSTOMIZATION=false
+              break
+            fi
+          done
+          echo "only_kustomization=$ONLY_KUSTOMIZATION" >> $GITHUB_OUTPUT
+
+      - name: Exit if only kustomization.yaml changed
+        if: steps.check_files.outputs.only_kustomization == 'true'
+        run: echo "Only config/manager/kustomization.yaml changed, skipping build" && exit 0
 
       - name: Bump version and push tag
         id: bump_version
