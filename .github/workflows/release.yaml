@@ -6,6 +6,12 @@ on:
       - closed
     branches:
       - master
+    paths:
+      - '**.go'
+      - 'go.mod'
+      - 'go.sum'
+      - 'Dockerfile'
+      - 'Makefile'
 
 env:
   REGISTRY: ghcr.io
@@ -27,31 +33,6 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
-
-      - name: Check changed files
-        id: check_files
-        run: |
-          # Get parent of merge commit
-          MERGE_PARENT=$(git rev-parse ${{ github.event.pull_request.merge_commit_sha }}^)
-          CHANGED_FILES=$(git diff --name-only $MERGE_PARENT ${{ github.event.pull_request.merge_commit_sha }})
-          if [ -z "$CHANGED_FILES" ]; then
-            echo "No changed files detected, assuming kustomization only"
-            echo "only_kustomization=true" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-          ONLY_KUSTOMIZATION=true
-          for file in $CHANGED_FILES; do
-            if [ "$file" != "config/manager/kustomization.yaml" ]; then
-              ONLY_KUSTOMIZATION=false
-              break
-            fi
-          done
-          echo "only_kustomization=$ONLY_KUSTOMIZATION" >> $GITHUB_OUTPUT
-        shell: bash
-
-      - name: Exit if only kustomization.yaml changed
-        if: steps.check_files.outputs.only_kustomization == 'true'
-        run: echo "Only config/manager/kustomization.yaml changed, skipping build" && exit 0
 
       - name: Bump version and push tag
         id: bump_version
