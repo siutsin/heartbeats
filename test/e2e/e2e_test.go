@@ -26,9 +26,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/goccy/go-yaml"
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
-	"gopkg.in/yaml.v3"
 
 	"github.com/siutsin/heartbeats/internal/controller"
 	"github.com/siutsin/heartbeats/test/utils"
