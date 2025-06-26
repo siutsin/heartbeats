@@ -10,19 +10,38 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// StatusUpdater handles updating the status of Heartbeat resources
+// StatusUpdater handles updating the status of Heartbeat resources.
+// It provides methods for updating various aspects of the Heartbeat status
+// including health status, error conditions, and metadata.
 type StatusUpdater struct {
-	Client client.Client
+	Client client.Client // Kubernetes client for updating resources
 }
 
-// NewStatusUpdater creates a new StatusUpdater
+// NewStatusUpdater creates a new StatusUpdater instance with the provided Kubernetes client.
+//
+// Parameters:
+//   - client: The Kubernetes client used for updating Heartbeat resources
+//
+// Returns:
+//   - *StatusUpdater: A new StatusUpdater instance
 func NewStatusUpdater(client client.Client) *StatusUpdater {
 	return &StatusUpdater{
 		Client: client,
 	}
 }
 
-// UpdateStatus updates the status of a Heartbeat resource
+// UpdateStatus updates the status of a Heartbeat resource with the provided values.
+// This is the core method that all other status update methods use internally.
+//
+// Parameters:
+//   - ctx: Context for the operation
+//   - heartbeat: The Heartbeat resource to update
+//   - statusCode: HTTP status code from the health check (0 if not applicable)
+//   - healthy: Whether the endpoint is considered healthy
+//   - message: Status message describing the current state
+//
+// Returns:
+//   - error: Non-nil if the status update failed, nil otherwise
 func (u *StatusUpdater) UpdateStatus(
 	ctx context.Context,
 	heartbeat *monitoringv1alpha1.Heartbeat,
@@ -46,7 +65,16 @@ func (u *StatusUpdater) UpdateStatus(
 	return nil
 }
 
-// UpdateSecretErrorStatus updates the status when there's an error with the secret
+// UpdateSecretErrorStatus updates the status when there's an error retrieving the secret.
+// This method logs the error and sets the status to indicate a secret-related failure.
+//
+// Parameters:
+//   - ctx: Context for the operation
+//   - heartbeat: The Heartbeat resource to update
+//   - err: The error that occurred while retrieving the secret
+//
+// Returns:
+//   - error: Non-nil if the status update failed, nil otherwise
 func (u *StatusUpdater) UpdateSecretErrorStatus(
 	ctx context.Context,
 	heartbeat *monitoringv1alpha1.Heartbeat,
@@ -63,7 +91,16 @@ func (u *StatusUpdater) UpdateSecretErrorStatus(
 	)
 }
 
-// UpdateMissingKeyStatus updates the status when a required key is missing
+// UpdateMissingKeyStatus updates the status when a required key is missing from the secret.
+// This method logs the missing key and sets the status to indicate the configuration issue.
+//
+// Parameters:
+//   - ctx: Context for the operation
+//   - heartbeat: The Heartbeat resource to update
+//   - key: The name of the missing key in the secret
+//
+// Returns:
+//   - error: Non-nil if the status update failed, nil otherwise
 func (u *StatusUpdater) UpdateMissingKeyStatus(
 	ctx context.Context,
 	heartbeat *monitoringv1alpha1.Heartbeat,
@@ -80,7 +117,15 @@ func (u *StatusUpdater) UpdateMissingKeyStatus(
 	)
 }
 
-// UpdateEmptyEndpointStatus updates the status when the endpoint is empty
+// UpdateEmptyEndpointStatus updates the status when the endpoint URL is empty.
+// This method logs the issue and sets the status to indicate an empty endpoint configuration.
+//
+// Parameters:
+//   - ctx: Context for the operation
+//   - heartbeat: The Heartbeat resource to update
+//
+// Returns:
+//   - error: Non-nil if the status update failed, nil otherwise
 func (u *StatusUpdater) UpdateEmptyEndpointStatus(
 	ctx context.Context,
 	heartbeat *monitoringv1alpha1.Heartbeat,
@@ -96,7 +141,17 @@ func (u *StatusUpdater) UpdateEmptyEndpointStatus(
 	)
 }
 
-// UpdateHealthCheckErrorStatus updates the status when there's an error checking health
+// UpdateHealthCheckErrorStatus updates the status when there's an error during health checking.
+// This method logs the error and sets the status to indicate a health check failure.
+//
+// Parameters:
+//   - ctx: Context for the operation
+//   - heartbeat: The Heartbeat resource to update
+//   - statusCode: HTTP status code if available (0 if not applicable)
+//   - err: The error that occurred during health checking
+//
+// Returns:
+//   - error: Non-nil if the status update failed, nil otherwise
 func (u *StatusUpdater) UpdateHealthCheckErrorStatus(
 	ctx context.Context,
 	heartbeat *monitoringv1alpha1.Heartbeat,
@@ -114,7 +169,16 @@ func (u *StatusUpdater) UpdateHealthCheckErrorStatus(
 	)
 }
 
-// UpdateInvalidRangeStatus updates the status when the status code range is invalid
+// UpdateInvalidRangeStatus updates the status when the status code range is invalid.
+// This method logs the issue and sets the status to indicate an invalid configuration.
+//
+// Parameters:
+//   - ctx: Context for the operation
+//   - heartbeat: The Heartbeat resource to update
+//   - statusCode: HTTP status code if available (0 if not applicable)
+//
+// Returns:
+//   - error: Non-nil if the status update failed, nil otherwise
 func (u *StatusUpdater) UpdateInvalidRangeStatus(
 	ctx context.Context,
 	heartbeat *monitoringv1alpha1.Heartbeat,
@@ -131,7 +195,20 @@ func (u *StatusUpdater) UpdateInvalidRangeStatus(
 	)
 }
 
-// UpdateHealthStatus updates the status based on the health check result
+// UpdateHealthStatus updates the status based on the health check result.
+// This method sets the status to reflect whether the endpoint is healthy or unhealthy,
+// including the report status for monitoring systems.
+//
+// Parameters:
+//   - ctx: Context for the operation
+//   - heartbeat: The Heartbeat resource to update
+//   - healthy: Whether the endpoint is considered healthy
+//   - statusCode: HTTP status code returned by the endpoint
+//   - err: Error from health checking (nil if successful)
+//   - reportSuccess: Whether the report to monitoring systems was successful
+//
+// Returns:
+//   - error: Non-nil if the status update failed, nil otherwise
 func (u *StatusUpdater) UpdateHealthStatus(
 	ctx context.Context,
 	heartbeat *monitoringv1alpha1.Heartbeat,

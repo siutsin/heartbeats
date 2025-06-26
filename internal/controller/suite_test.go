@@ -41,20 +41,27 @@ import (
 // These tests use Ginkgo (BDD-style Go testing framework). Refer to
 // http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
 
+// Global variables used across the test suite for shared resources.
 var (
-	cfg       *rest.Config
-	k8sClient client.Client
-	testEnv   *envtest.Environment
-	ctx       context.Context
-	cancel    context.CancelFunc
+	cfg       *rest.Config         // Kubernetes REST config for the test environment
+	k8sClient client.Client        // Kubernetes client for interacting with the test cluster
+	testEnv   *envtest.Environment // Test environment providing a local Kubernetes cluster
+	ctx       context.Context      // Context for test operations
+	cancel    context.CancelFunc   // Cancel function for the test context
 )
 
+// TestAPIs is the main entry point for the test suite.
+// It registers the Ginkgo fail handler and runs all test specs.
+// This function is called by the Go testing framework.
 func TestAPIs(t *testing.T) {
 	gomega.RegisterFailHandler(ginkgo.Fail)
 
 	ginkgo.RunSpecs(t, "Controller Suite")
 }
 
+// BeforeSuite sets up the test environment before any tests run.
+// It initialises a local Kubernetes cluster, creates the necessary clients,
+// and starts the controller manager for integration testing.
 var _ = ginkgo.BeforeSuite(func() {
 	logf.SetLogger(zap.New(zap.WriteTo(ginkgo.GinkgoWriter), zap.UseDevMode(true)))
 
@@ -106,6 +113,8 @@ var _ = ginkgo.BeforeSuite(func() {
 	}()
 })
 
+// AfterSuite cleans up the test environment after all tests have completed.
+// It cancels the test context and stops the local Kubernetes cluster.
 var _ = ginkgo.AfterSuite(func() {
 	ginkgo.By("tearing down the test environment")
 	cancel()
