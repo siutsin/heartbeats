@@ -157,13 +157,3 @@ func (r *HeartbeatReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(&monitoringv1alpha1.Heartbeat{}).
 		Complete(r)
 }
-
-// isStatusCodeInRange checks if the status code is within any of the expected ranges
-func isStatusCodeInRange(statusCode int, ranges []monitoringv1alpha1.StatusCodeRange) bool {
-	for _, r := range ranges {
-		if statusCode >= r.Min && statusCode <= r.Max {
-			return true
-		}
-	}
-	return false
-}
