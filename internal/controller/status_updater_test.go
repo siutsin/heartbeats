@@ -181,12 +181,14 @@ func TestUpdateHealthStatus(t *testing.T) {
 				tt.healthy,
 				tt.statusCode,
 				tt.err,
+				true,
 			)
 
 			g.Expect(err).NotTo(gomega.HaveOccurred())
 			g.Expect(heartbeat.Status.LastStatus).To(gomega.Equal(tt.statusCode))
 			g.Expect(heartbeat.Status.Healthy).To(gomega.Equal(tt.healthy))
 			g.Expect(heartbeat.Status.Message).To(gomega.Equal(tt.expectedMsg))
+			g.Expect(heartbeat.Status.ReportStatus).To(gomega.Equal("Success"))
 		})
 	}
 }

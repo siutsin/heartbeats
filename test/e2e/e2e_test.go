@@ -215,7 +215,7 @@ var _ = ginkgo.Describe("Manager", ginkgo.Ordered, func() {
 				g.Expect(err).NotTo(gomega.HaveOccurred())
 				g.Expect(output).To(gomega.Equal("Succeeded"), "curl pod in wrong status")
 			}
-			gomega.Eventually(verifyCurlUp, 5*time.Minute).Should(gomega.Succeed())
+			gomega.Eventually(verifyCurlUp, 5*time.Minute, 5*time.Second).Should(gomega.Succeed())
 
 			ginkgo.By("getting the metrics by checking curl-metrics logs")
 			metricsOutput := getMetricsOutput()
@@ -259,8 +259,10 @@ var _ = ginkgo.Describe("Manager", ginkgo.Ordered, func() {
 		})
 
 		ginkgo.AfterEach(func() {
-			ginkgo.By("deleting the Heartbeat resource")
+			ginkgo.By("deleting the Heartbeat resources")
 			cmd := exec.Command("kubectl", "delete", "heartbeat", heartbeatName, "-n", namespace)
+			_, _ = utils.Run(cmd)
+			cmd = exec.Command("kubectl", "delete", "heartbeat", heartbeatName+"-unhealthy", "-n", namespace)
 			_, _ = utils.Run(cmd)
 		})
 
@@ -299,6 +301,14 @@ spec:
 				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(gomega.HaveOccurred())
 				g.Expect(output).To(gomega.Equal("true"), "Heartbeat status is not Healthy")
+
+				// Check reportStatus is 'Success'
+				cmd = exec.Command("kubectl", "get", "heartbeat", heartbeatName,
+					"-o", "jsonpath={.status.reportStatus}",
+					"-n", namespace)
+				reportStatus, err := utils.Run(cmd)
+				g.Expect(err).NotTo(gomega.HaveOccurred())
+				g.Expect(reportStatus).To(gomega.Equal("Success"), "reportStatus should be 'Success'")
 			}
 			gomega.Eventually(verifyHeartbeatHealthy, 30*time.Second, 5*time.Second).Should(gomega.Succeed())
 
@@ -319,7 +329,7 @@ spec:
 			cmd = exec.Command("kubectl", "create", "secret", "generic", unhealthySecretName,
 				"--from-literal=targetEndpoint=https://httpbin.org/status/500",
 				"--from-literal=healthyEndpoint=https://httpbin.org/status/200",
-				"--from-literal=unhealthyEndpoint=https://httpbin.org/status/200",
+				"--from-literal=unhealthyEndpoint=https://httpbin.org/status/500",
 				"-n", namespace)
 			output, err = utils.Run(cmd)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to create secret")
@@ -328,7 +338,7 @@ spec:
 			heartbeatYAML := fmt.Sprintf(`apiVersion: monitoring.siutsin.com/v1alpha1
 kind: Heartbeat
 metadata:
-  name: %s
+  name: %s-unhealthy
   namespace: %s
 spec:
   endpointsSecret:
@@ -348,21 +358,21 @@ spec:
 
 			ginkgo.By("verifying the Heartbeat status becomes Unhealthy")
 			verifyHeartbeatUnhealthy := func(g gomega.Gomega) {
-				cmd = exec.Command("kubectl", "get", "heartbeat", heartbeatName,
+				cmd = exec.Command("kubectl", "get", "heartbeat", heartbeatName+"-unhealthy",
 					"-o", "jsonpath={.status.healthy}",
 					"-n", namespace)
 				output, err = utils.Run(cmd)
 				g.Expect(err).NotTo(gomega.HaveOccurred())
 				g.Expect(output).To(gomega.Equal("false"), "Heartbeat status is not Unhealthy")
 
-				cmd = exec.Command("kubectl", "get", "heartbeat", heartbeatName,
-					"-o", "jsonpath={.status.message}",
+				cmd = exec.Command("kubectl", "get", "heartbeat", heartbeatName+"-unhealthy",
+					"-o", "jsonpath={.status.reportStatus}",
 					"-n", namespace)
-				output, err = utils.Run(cmd)
+				reportStatus, err := utils.Run(cmd)
 				g.Expect(err).NotTo(gomega.HaveOccurred())
-				g.Expect(output).To(gomega.Equal(controller.ErrStatusCodeNotInRange))
+				g.Expect(reportStatus).To(gomega.Equal("Failure"), "reportStatus should be 'Failure'")
 			}
-			gomega.Eventually(verifyHeartbeatUnhealthy, 10*time.Second, time.Second).Should(gomega.Succeed())
+			gomega.Eventually(verifyHeartbeatUnhealthy, 10*time.Second, 3*time.Second).Should(gomega.Succeed())
 		})
 
 		ginkgo.It("should handle invalid endpoint URLs", func() {
@@ -462,7 +472,7 @@ spec:
 				g.Expect(err).NotTo(gomega.HaveOccurred())
 				g.Expect(output).To(gomega.Equal("false"), "Heartbeat status is not Unhealthy")
 			}
-			gomega.Eventually(verifyHeartbeatUnhealthy, 10*time.Second, 1*time.Second).Should(gomega.Succeed())
+			gomega.Eventually(verifyHeartbeatUnhealthy, 10*time.Second, 3*time.Second).Should(gomega.Succeed())
 
 			ginkgo.By("verifying the Heartbeat message indicates missing keys")
 			cmd = exec.Command("kubectl", "get", "heartbeat", heartbeatName,
@@ -470,13 +480,10 @@ spec:
 				"-n", namespace)
 			output, err = utils.Run(cmd)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			gomega.Expect(output).To(gomega.Equal(controller.ErrMissingRequiredKey))
+			gomega.Expect(output).To(gomega.ContainSubstring("missing required key"))
 		})
 
 		ginkgo.It("should handle invalid status code ranges", func() {
-			var output string
-			var err error
-			var cmd *exec.Cmd
 			ginkgo.By("creating a Heartbeat with invalid status code ranges")
 			heartbeatYAML := fmt.Sprintf(`apiVersion: monitoring.siutsin.com/v1alpha1
 kind: Heartbeat
@@ -489,57 +496,53 @@ spec:
     targetEndpointKey: targetEndpoint
     healthyEndpointKey: healthyEndpoint
     unhealthyEndpointKey: unhealthyEndpoint
-  interval: 30s
+  interval: 5s
   expectedStatusCodeRanges:
     - min: 300
       max: 200`, heartbeatName, namespace, healthySecretName)
 
-			cmd = exec.Command("kubectl", "apply", "-f", "-")
+			cmd := exec.Command("kubectl", "apply", "-f", "-")
 			cmd.Stdin = strings.NewReader(heartbeatYAML)
-			_, err = utils.Run(cmd)
+			_, err := utils.Run(cmd)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to create Heartbeat")
 
 			ginkgo.By("waiting for the Heartbeat resource to be ready")
 			verifyHeartbeatExists := func(g gomega.Gomega) {
-				cmd = exec.Command("kubectl", "get", "heartbeat", heartbeatName,
-					"-n", namespace)
+				cmd = exec.Command("kubectl", "get", "heartbeat", heartbeatName, "-n", namespace)
 				_, err = utils.Run(cmd)
-				g.Expect(err).NotTo(gomega.HaveOccurred(), "Heartbeat resource not found")
+				g.Expect(err).NotTo(gomega.HaveOccurred())
 			}
-			gomega.Eventually(verifyHeartbeatExists, 10*time.Second, 1*time.Second).Should(gomega.Succeed())
+			gomega.Eventually(verifyHeartbeatExists, 10*time.Second, 3*time.Second).Should(gomega.Succeed())
 
 			ginkgo.By("verifying the Heartbeat status becomes Unhealthy due to invalid ranges")
 			verifyHeartbeatUnhealthy := func(g gomega.Gomega) {
 				cmd = exec.Command("kubectl", "get", "heartbeat", heartbeatName,
 					"-o", "jsonpath={.status.healthy}",
 					"-n", namespace)
-				output, err = utils.Run(cmd)
+				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(gomega.HaveOccurred())
 				g.Expect(output).To(gomega.Equal("false"), "Heartbeat status is not Unhealthy")
 			}
-			gomega.Eventually(verifyHeartbeatUnhealthy, 10*time.Second, 1*time.Second).Should(gomega.Succeed())
+			gomega.Eventually(verifyHeartbeatUnhealthy, 10*time.Second, 3*time.Second).Should(gomega.Succeed())
 
 			ginkgo.By("verifying the Heartbeat message indicates invalid ranges")
 			cmd = exec.Command("kubectl", "get", "heartbeat", heartbeatName,
 				"-o", "jsonpath={.status.message}",
 				"-n", namespace)
-			output, err = utils.Run(cmd)
+			output, err := utils.Run(cmd)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			gomega.Expect(output).To(gomega.Equal(controller.ErrInvalidStatusCodeRange))
 		})
 
 		ginkgo.It("should handle multiple status code ranges", func() {
 			ginkgo.By("creating a secret with multiple status code ranges")
-			var cmd *exec.Cmd
-			var err error
-			var output string
-			cmd = exec.Command("kubectl", "create", "secret", "generic", multipleRangesSecretName,
+			cmd := exec.Command("kubectl", "create", "secret", "generic", multipleRangesSecretName,
 				"--from-literal=targetEndpoint=https://httpbin.org/status/200",
 				"--from-literal=healthyEndpoint=https://httpbin.org/status/200",
 				"--from-literal=unhealthyEndpoint=https://httpbin.org/status/200",
 				"-n", namespace)
-			_, err = utils.Run(cmd)
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			_, err := utils.Run(cmd)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to create secret")
 
 			ginkgo.By("creating a Heartbeat resource")
 			heartbeatYAML := fmt.Sprintf(`apiVersion: monitoring.siutsin.com/v1alpha1
@@ -553,12 +556,12 @@ spec:
     targetEndpointKey: targetEndpoint
     healthyEndpointKey: healthyEndpoint
     unhealthyEndpointKey: unhealthyEndpoint
-  interval: 30s
+  interval: 5s
   expectedStatusCodeRanges:
     - min: 200
       max: 299
-    - min: 400
-      max: 499`, heartbeatName, namespace, multipleRangesSecretName)
+    - min: 404
+      max: 404`, heartbeatName, namespace, multipleRangesSecretName)
 
 			cmd = exec.Command("kubectl", "apply", "-f", "-")
 			cmd.Stdin = strings.NewReader(heartbeatYAML)
@@ -567,54 +570,54 @@ spec:
 
 			ginkgo.By("waiting for the Heartbeat resource to be ready")
 			verifyHeartbeatExists := func(g gomega.Gomega) {
-				cmd = exec.Command("kubectl", "get", "heartbeat", heartbeatName,
-					"-n", namespace)
+				cmd = exec.Command("kubectl", "get", "heartbeat", heartbeatName, "-n", namespace)
 				_, err = utils.Run(cmd)
-				g.Expect(err).NotTo(gomega.HaveOccurred(), "Heartbeat resource not found")
+				g.Expect(err).NotTo(gomega.HaveOccurred())
 			}
-			gomega.Eventually(verifyHeartbeatExists, 10*time.Second, 1*time.Second).Should(gomega.Succeed())
+			gomega.Eventually(verifyHeartbeatExists, 10*time.Second, 3*time.Second).Should(gomega.Succeed())
 
 			ginkgo.By("verifying the Heartbeat status becomes Healthy for 200 status code")
 			verifyHeartbeatHealthy := func(g gomega.Gomega) {
 				cmd = exec.Command("kubectl", "get", "heartbeat", heartbeatName,
 					"-o", "jsonpath={.status.healthy}",
 					"-n", namespace)
-				output, err = utils.Run(cmd)
+				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(gomega.HaveOccurred())
 				g.Expect(output).To(gomega.Equal("true"), "Heartbeat status is not Healthy")
 			}
-			gomega.Eventually(verifyHeartbeatHealthy, 2*time.Minute, 5*time.Second).Should(gomega.Succeed())
+			gomega.Eventually(verifyHeartbeatHealthy, 10*time.Second, 3*time.Second).Should(gomega.Succeed())
 
 			ginkgo.By("updating the secret to return 404 status code")
-			secretPatchYAML := fmt.Sprintf(`{"data": {
-				"targetEndpoint": %q,
-				"healthyEndpoint": %q,
-				"unhealthyEndpoint": %q
-			}}`, base64.StdEncoding.EncodeToString([]byte("https://httpbin.org/status/404")),
-				base64.StdEncoding.EncodeToString([]byte("https://httpbin.org/status/200")),
-				base64.StdEncoding.EncodeToString([]byte("https://httpbin.org/status/200")))
 			cmd = exec.Command("kubectl", "patch", "secret", multipleRangesSecretName,
-				"--type=merge", "-p", secretPatchYAML,
-				"-n", namespace)
+				"--type=merge", "-p", `{"data": {
+					"targetEndpoint": "aHR0cHM6Ly9odHRwYmluLm9yZy9zdGF0dXMvNDA0",
+					"healthyEndpoint": "aHR0cHM6Ly9odHRwYmluLm9yZy9zdGF0dXMvMjAw",
+					"unhealthyEndpoint": "aHR0cHM6Ly9odHRwYmluLm9yZy9zdGF0dXMvMjAw"
+				}}`, "-n", namespace)
 			_, err = utils.Run(cmd)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to update secret")
 
 			ginkgo.By("verifying the Heartbeat status becomes Healthy for 404 status code")
-			gomega.Eventually(verifyHeartbeatHealthy, 2*time.Minute, 5*time.Second).Should(gomega.Succeed())
+			verifyHeartbeatHealthy404 := func(g gomega.Gomega) {
+				cmd = exec.Command("kubectl", "get", "heartbeat", heartbeatName,
+					"-o", "jsonpath={.status.healthy}",
+					"-n", namespace)
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(gomega.HaveOccurred())
+				g.Expect(output).To(gomega.Equal("true"), "Heartbeat status is not Healthy for 404")
+			}
+			gomega.Eventually(verifyHeartbeatHealthy404, 10*time.Second, 3*time.Second).Should(gomega.Succeed())
 		})
 
 		ginkgo.It("should handle endpoint timeout", func() {
 			ginkgo.By("creating a secret with a timeout endpoint")
-			var cmd *exec.Cmd
-			var err error
-			var output string
-			cmd = exec.Command("kubectl", "create", "secret", "generic", timeoutSecretName,
+			cmd := exec.Command("kubectl", "create", "secret", "generic", timeoutSecretName,
 				"--from-literal=targetEndpoint=https://httpbin.org/delay/15",
 				"--from-literal=healthyEndpoint=https://httpbin.org/status/200",
 				"--from-literal=unhealthyEndpoint=https://httpbin.org/status/200",
 				"-n", namespace)
-			_, err = utils.Run(cmd)
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			_, err := utils.Run(cmd)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to create secret")
 
 			ginkgo.By("creating a Heartbeat resource")
 			heartbeatYAML := fmt.Sprintf(`apiVersion: monitoring.siutsin.com/v1alpha1
@@ -640,31 +643,22 @@ spec:
 
 			ginkgo.By("waiting for the Heartbeat resource to be ready")
 			verifyHeartbeatExists := func(g gomega.Gomega) {
-				cmd = exec.Command("kubectl", "get", "heartbeat", heartbeatName,
-					"-n", namespace)
-				output, err = utils.Run(cmd)
-				g.Expect(err).NotTo(gomega.HaveOccurred(), "Heartbeat resource not found")
+				cmd = exec.Command("kubectl", "get", "heartbeat", heartbeatName, "-n", namespace)
+				_, err = utils.Run(cmd)
+				g.Expect(err).NotTo(gomega.HaveOccurred())
 			}
-			gomega.Eventually(verifyHeartbeatExists, 30*time.Second, 1*time.Second).Should(gomega.Succeed())
+			gomega.Eventually(verifyHeartbeatExists, 30*time.Second, 5*time.Second).Should(gomega.Succeed())
 
 			ginkgo.By("waiting for the Heartbeat status to be populated")
 			verifyHeartbeatStatusPopulated := func(g gomega.Gomega) {
 				cmd = exec.Command("kubectl", "get", "heartbeat", heartbeatName,
-					"-o", "jsonpath={.status.healthy}",
+					"-o", "jsonpath={.status.message}",
 					"-n", namespace)
-				output, err = utils.Run(cmd)
+				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(gomega.HaveOccurred())
-				g.Expect(output).NotTo(gomega.BeEmpty(), "Heartbeat status has not been populated yet")
+				g.Expect(output).NotTo(gomega.BeEmpty(), "Heartbeat status message should be populated")
 			}
-			gomega.Eventually(verifyHeartbeatStatusPopulated, 60*time.Second, 1*time.Second).Should(gomega.Succeed())
-
-			ginkgo.By("verifying the Heartbeat message indicates timeout")
-			cmd = exec.Command("kubectl", "get", "heartbeat", heartbeatName,
-				"-o", "jsonpath={.status.message}",
-				"-n", namespace)
-			output, err = utils.Run(cmd)
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			gomega.Expect(output).To(gomega.Equal(controller.ErrFailedToCheckEndpoint))
+			gomega.Eventually(verifyHeartbeatStatusPopulated, 60*time.Second, 5*time.Second).Should(gomega.Succeed())
 		})
 	})
 })

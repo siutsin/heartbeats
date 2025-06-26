@@ -59,7 +59,7 @@ vet: ## Run go vet against code.
 
 .PHONY: test
 test: manifests generate fmt vet setup-envtest ## Run tests.
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test -race ./internal/... -coverprofile cover.out
+	CGO_ENABLED=0 KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test -race ./internal/... -coverprofile cover.out
 
 # TODO(user): To use a different vendor for e2e tests, modify the setup under 'tests/e2e'.
 # The default setup assumes Kind is pre-installed and builds/loads the Manager Docker image locally.
@@ -75,7 +75,10 @@ test-e2e: manifests generate fmt vet docker-build ## Run the e2e tests. Use LOCA
 		kind delete cluster --name kind; \
 		kind create cluster --name kind --config test/e2e/kind-config.yaml; \
 	fi
-	go test -race ./test/e2e/ -v -ginkgo.v
+	@echo "Running e2e tests..."
+	CGO_ENABLED=0 go test -race ./test/e2e/ -v -ginkgo.v
+	@echo "Reverting kustomization file changes..."
+	@git checkout config/manager/kustomization.yaml
 	@if [ "$(LOCAL)" = "true" ]; then \
 		kind delete cluster --name kind; \
 	fi
@@ -96,11 +99,11 @@ lint-config: golangci-lint ## Verify golangci-lint linter configuration
 
 .PHONY: build
 build: manifests generate fmt vet ## Build manager binary.
-	go build -o bin/manager cmd/main.go
+	CGO_ENABLED=0 go build -o bin/manager cmd/main.go
 
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.
-	go run ./cmd/main.go
+	CGO_ENABLED=0 go run ./cmd/main.go
 
 # If you wish to build the manager image targeting other platforms you can use the --platform flag.
 # (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.

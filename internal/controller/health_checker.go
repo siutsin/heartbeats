@@ -20,7 +20,8 @@ type HealthChecker interface {
 		ctx context.Context,
 		endpoint string,
 		expectedStatusCodeRanges []monitoringv1alpha1.StatusCodeRange,
-	) (bool, int, error)
+		endpointsSecret monitoringv1alpha1.EndpointsSecret,
+	) (bool, int, bool, error)
 }
 
 // DefaultHealthChecker is the default implementation of HealthChecker.
@@ -78,32 +79,51 @@ func (h *DefaultHealthChecker) doRequestWithRetries(req *http.Request, log logr.
 	return nil, lastErr
 }
 
+// reportHealthStatus sends a GET request to the provided reportURL using the given context and logger.
+// It is used to report the health status to the appropriate endpoint (fire and forget).
+// Returns true if the report request succeeded, false otherwise.
+func (h *DefaultHealthChecker) reportHealthStatus(ctx context.Context, reportURL string, log logr.Logger) bool {
+	if reportURL == "" {
+		return false
+	}
+	reportReq, err := createRequest(ctx, reportURL)
+	if err == nil {
+		resp, err := h.doRequestWithRetries(reportReq, log)
+		if err == nil && resp != nil && resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			return true
+		}
+	} else {
+		log.Error(err, "Failed to create report request", "reportURL", reportURL)
+	}
+	return false
+}
+
 // CheckEndpointHealth checks if the endpoint is healthy by making an HTTP request.
 //
 // Returns:
 //
 //	bool:  true if the endpoint is considered healthy (status code in expected range), false otherwise.
 //	int:   the HTTP status code returned by the endpoint, or 0 if no response was received.
+//	bool:  true if the report request succeeded, false otherwise.
 //	error: non-nil if an error occurred during the health check (e.g., network error, timeout, invalid request),
 //	       or nil if the check was successful.
-//
-// This allows the caller to distinguish between healthy/unhealthy endpoints, inspect the actual status code,
-// and handle errors in an idiomatic Go way.
 func (h *DefaultHealthChecker) CheckEndpointHealth(
 	ctx context.Context,
 	endpoint string,
-	expectedStatusCodeRanges []monitoringv1alpha1.StatusCodeRange) (bool, int, error) {
+	expectedStatusCodeRanges []monitoringv1alpha1.StatusCodeRange,
+	endpointsSecret monitoringv1alpha1.EndpointsSecret,
+) (bool, int, bool, error) {
 	log := log.FromContext(ctx)
 
 	req, err := createRequest(ctx, endpoint)
 	if err != nil {
 		log.Error(err, ErrFailedToCreateRequest, "endpoint", endpoint)
-		return false, 0, fmt.Errorf("%s: %w", ErrFailedToCreateRequest, err)
+		return false, 0, false, fmt.Errorf("%s: %w", ErrFailedToCreateRequest, err)
 	}
 
 	resp, err := h.doRequestWithRetries(req, log)
 	if err != nil {
-		return false, 0, err
+		return false, 0, false, err
 	}
 	if resp != nil {
 		defer func() {
@@ -113,8 +133,18 @@ func (h *DefaultHealthChecker) CheckEndpointHealth(
 		}()
 	}
 
-	if isStatusCodeInRange(resp.StatusCode, expectedStatusCodeRanges) {
-		return true, resp.StatusCode, nil
+	healthy := isStatusCodeInRange(resp.StatusCode, expectedStatusCodeRanges)
+
+	// Report to the appropriate endpoint
+	var reportSuccess bool
+	if healthy {
+		reportSuccess = h.reportHealthStatus(ctx, endpointsSecret.HealthyEndpointKey, log)
+	} else {
+		reportSuccess = h.reportHealthStatus(ctx, endpointsSecret.UnhealthyEndpointKey, log)
 	}
-	return false, resp.StatusCode, nil
+
+	if healthy {
+		return true, resp.StatusCode, reportSuccess, nil
+	}
+	return false, resp.StatusCode, reportSuccess, nil
 }

@@ -138,6 +138,7 @@ func (u *StatusUpdater) UpdateHealthStatus(
 	healthy bool,
 	statusCode int,
 	err error,
+	reportSuccess bool,
 ) error {
 	log := log.FromContext(ctx)
 
@@ -152,6 +153,12 @@ func (u *StatusUpdater) UpdateHealthStatus(
 		heartbeat.Status.Message = ErrEndpointHealthy
 	} else {
 		heartbeat.Status.Message = ErrStatusCodeNotInRange
+	}
+
+	if reportSuccess {
+		heartbeat.Status.ReportStatus = "Success"
+	} else {
+		heartbeat.Status.ReportStatus = "Failure"
 	}
 
 	if err := u.Client.Status().Update(ctx, heartbeat); err != nil {

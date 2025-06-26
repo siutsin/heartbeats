@@ -239,10 +239,11 @@ func TestCheckEndpointHealth(t *testing.T) {
 				defer cancel()
 			}
 
-			healthy, statusCode, err := checker.CheckEndpointHealth(
+			healthy, statusCode, _, err := checker.CheckEndpointHealth(
 				ctx,
 				endpoint,
 				tt.expectedRange,
+				monitoringv1alpha1.EndpointsSecret{}, // dummy for legacy tests
 			)
 
 			if tt.expectError {
@@ -257,4 +258,58 @@ func TestCheckEndpointHealth(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCheckEndpointHealth_ReportsToCorrectEndpoint(t *testing.T) {
+	g := gomega.NewWithT(t)
+
+	// Set up a server to act as the main endpoint
+	mainStatus := http.StatusOK
+	mainServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(mainStatus)
+	}))
+	defer mainServer.Close()
+
+	// Set up servers to act as the healthy and unhealthy report endpoints
+	reportCalled := ""
+	healthyReportServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		reportCalled = "healthy"
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer healthyReportServer.Close()
+
+	unhealthyReportServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		reportCalled = "unhealthy"
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer unhealthyReportServer.Close()
+
+	checker := controller.NewHealthChecker(controller.Config{
+		DefaultTimeout: testTimeout,
+		MaxRetries:     testMaxRetries,
+		RetryDelay:     testRetryDelay,
+	})
+
+	ctx := context.Background()
+	statusRanges := []monitoringv1alpha1.StatusCodeRange{{Min: 200, Max: 299}}
+	endpointsSecret := monitoringv1alpha1.EndpointsSecret{
+		HealthyEndpointKey:   healthyReportServer.URL,
+		UnhealthyEndpointKey: unhealthyReportServer.URL,
+	}
+
+	// Test healthy case
+	reportCalled = ""
+	mainStatus = http.StatusOK
+	healthy, _, _, err := checker.CheckEndpointHealth(ctx, mainServer.URL, statusRanges, endpointsSecret)
+	g.Expect(err).NotTo(gomega.HaveOccurred())
+	g.Expect(healthy).To(gomega.BeTrue())
+	g.Eventually(func() string { return reportCalled }).Should(gomega.Equal("healthy"))
+
+	// Test unhealthy case
+	reportCalled = ""
+	mainStatus = http.StatusInternalServerError
+	healthy, _, _, err = checker.CheckEndpointHealth(ctx, mainServer.URL, statusRanges, endpointsSecret)
+	g.Expect(err).NotTo(gomega.HaveOccurred())
+	g.Expect(healthy).To(gomega.BeFalse())
+	g.Eventually(func() string { return reportCalled }).Should(gomega.Equal("unhealthy"))
 }

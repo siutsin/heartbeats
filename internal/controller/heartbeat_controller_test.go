@@ -58,8 +58,9 @@ func (m *mockHealthChecker) CheckEndpointHealth(
 	_ context.Context,
 	_ string,
 	_ []monitoringv1alpha1.StatusCodeRange,
-) (bool, int, error) {
-	return m.healthy, m.statusCode, nil
+	_ monitoringv1alpha1.EndpointsSecret,
+) (bool, int, bool, error) {
+	return m.healthy, m.statusCode, true, nil
 }
 
 func TestHeartbeatReconciler(t *testing.T) {
@@ -79,7 +80,9 @@ func TestHeartbeatReconciler(t *testing.T) {
 					{Min: 200, Max: 299},
 				}
 				s.Data = map[string][]byte{
-					"targetEndpoint": []byte("https://example.com"),
+					"targetEndpoint":    []byte("https://example.com"),
+					"healthyEndpoint":   []byte("https://healthy.example.com"),
+					"unhealthyEndpoint": []byte("https://unhealthy.example.com"),
 				}
 			},
 		},
@@ -94,14 +97,16 @@ func TestHeartbeatReconciler(t *testing.T) {
 					{Min: 200, Max: 299},
 				}
 				s.Data = map[string][]byte{
-					"targetEndpoint": []byte("https://example.com"),
+					"targetEndpoint":    []byte("https://example.com"),
+					"healthyEndpoint":   []byte("https://healthy.example.com"),
+					"unhealthyEndpoint": []byte("https://unhealthy.example.com"),
 				}
 			},
 		},
 		{
 			name:           "invalid status code range",
-			statusCode:     http.StatusOK,
-			expectedStatus: http.StatusOK,
+			statusCode:     0,
+			expectedStatus: 0,
 			expectedMsg:    controller.ErrInvalidStatusCodeRange,
 			expectHealthy:  false,
 			setupMock: func(h *monitoringv1alpha1.Heartbeat, s *corev1.Secret) {
@@ -109,7 +114,9 @@ func TestHeartbeatReconciler(t *testing.T) {
 					{Min: 300, Max: 200},
 				}
 				s.Data = map[string][]byte{
-					"targetEndpoint": []byte("https://example.com"),
+					"targetEndpoint":    []byte("https://example.com"),
+					"healthyEndpoint":   []byte("https://healthy.example.com"),
+					"unhealthyEndpoint": []byte("https://unhealthy.example.com"),
 				}
 			},
 		},
@@ -137,7 +144,9 @@ func TestHeartbeatReconciler(t *testing.T) {
 					{Min: 200, Max: 299},
 				}
 				s.Data = map[string][]byte{
-					"targetEndpoint": []byte(""),
+					"targetEndpoint":    []byte(""),
+					"healthyEndpoint":   []byte("https://healthy.example.com"),
+					"unhealthyEndpoint": []byte("https://unhealthy.example.com"),
 				}
 			},
 		},
@@ -155,8 +164,10 @@ func TestHeartbeatReconciler(t *testing.T) {
 				},
 				Spec: monitoringv1alpha1.HeartbeatSpec{
 					EndpointsSecret: monitoringv1alpha1.EndpointsSecret{
-						Name:              secretName,
-						TargetEndpointKey: "targetEndpoint",
+						Name:                 secretName,
+						TargetEndpointKey:    "targetEndpoint",
+						HealthyEndpointKey:   "healthyEndpoint",
+						UnhealthyEndpointKey: "unhealthyEndpoint",
 					},
 					Interval: interval,
 				},

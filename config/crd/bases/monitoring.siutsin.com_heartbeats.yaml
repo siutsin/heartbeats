@@ -118,6 +118,10 @@ spec:
                 description: Message contains a human-readable message about the endpoint
                   status
                 type: string
+              reportStatus:
+                description: ReportStatus indicates if the last report (to healthy/unhealthy
+                  endpoint) was successful
+                type: string
             required:
             - healthy
             - lastStatus

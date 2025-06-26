@@ -111,6 +111,9 @@ type HeartbeatStatus struct {
 
 	// LastChecked is the timestamp of the last health check
 	LastChecked *metav1.Time `json:"lastChecked,omitempty"`
+
+	// ReportStatus indicates if the last report (to healthy/unhealthy endpoint) was successful
+	ReportStatus string `json:"reportStatus,omitempty"`
 }
 
 // String returns a human-readable representation of the status
