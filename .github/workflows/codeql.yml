@@ -13,15 +13,19 @@ name: "CodeQL Advanced"
 
 on:
   push:
-    paths: &paths
+    paths:
       - '**.go'
       - 'go.mod'
       - 'go.sum'
-    branches: &branches
+    branches:
       - master
   pull_request:
-    paths: *paths
-    branches: *branches
+    paths:
+      - '**.go'
+      - 'go.mod'
+      - 'go.sum'
+    branches:
+      - master
   schedule:
     - cron: '37 19 * * 1'
 
