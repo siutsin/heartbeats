@@ -7,9 +7,9 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-logr/logr"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	"github.com/go-logr/logr"
 	monitoringv1alpha1 "github.com/siutsin/heartbeats/api/v1alpha1"
 )
 
@@ -28,6 +28,7 @@ type HealthChecker interface {
 // It uses HTTP requests and configurable retry logic to check endpoint health.
 type DefaultHealthChecker struct {
 	config Config
+	client *http.Client
 }
 
 // NewHealthChecker creates a new DefaultHealthChecker with the provided configuration.
@@ -35,24 +36,8 @@ type DefaultHealthChecker struct {
 func NewHealthChecker(config Config) HealthChecker {
 	return &DefaultHealthChecker{
 		config: config,
+		client: &http.Client{Timeout: config.DefaultTimeout},
 	}
-}
-
-// createRequest creates a new HTTP GET request with the provided context and endpoint URL.
-// Returns the constructed *http.Request or an error if the request could not be created.
-func createRequest(ctx context.Context, endpoint string) (*http.Request, error) {
-	return http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-}
-
-// isStatusCodeInRange checks if the given status code is within any of the provided expected ranges.
-// Returns true if the status code is in range, false otherwise.
-func isStatusCodeInRange(statusCode int, ranges []monitoringv1alpha1.StatusCodeRange) bool {
-	for _, r := range ranges {
-		if statusCode >= r.Min && statusCode <= r.Max {
-			return true
-		}
-	}
-	return false
 }
 
 // doRequestWithRetries performs the HTTP request with retry logic.
@@ -60,13 +45,12 @@ func isStatusCodeInRange(statusCode int, ranges []monitoringv1alpha1.StatusCodeR
 // Returns the HTTP response or the last error encountered.
 func (h *DefaultHealthChecker) doRequestWithRetries(req *http.Request, log logr.Logger) (*http.Response, error) {
 	var lastErr error
-	client := &http.Client{Timeout: h.config.DefaultTimeout}
 	for i := 0; i < h.config.MaxRetries; i++ {
-		resp, err := client.Do(req)
+		resp, err := h.client.Do(req)
 		if err != nil {
 			log.Error(err, "Failed to make request", "endpoint", req.URL.String(), "attempt", i+1)
 			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-				log.Error(err, ErrEndpointTimeout, "timeout", h.config.DefaultTimeout)
+				log.Error(err, "Request timeout", "timeout", h.config.DefaultTimeout)
 				lastErr = fmt.Errorf("%s: %w", ErrEndpointTimeout, err)
 			} else {
 				lastErr = fmt.Errorf("%s: %w", ErrFailedToMakeRequest, err)
@@ -79,27 +63,7 @@ func (h *DefaultHealthChecker) doRequestWithRetries(req *http.Request, log logr.
 	return nil, lastErr
 }
 
-// reportHealthStatus sends a GET request to the provided reportURL using the given context and logger.
-// It is used to report the health status to the appropriate endpoint (fire and forget).
-// Returns true if the report request succeeded, false otherwise.
-func (h *DefaultHealthChecker) reportHealthStatus(ctx context.Context, reportURL string, log logr.Logger) bool {
-	if reportURL == "" {
-		return false
-	}
-	reportReq, err := createRequest(ctx, reportURL)
-	if err == nil {
-		resp, err := h.doRequestWithRetries(reportReq, log)
-		if err == nil && resp != nil && resp.StatusCode >= 200 && resp.StatusCode < 300 {
-			return true
-		}
-	} else {
-		log.Error(err, "Failed to create report request", "reportURL", reportURL)
-	}
-	return false
-}
-
 // CheckEndpointHealth checks if the endpoint is healthy by making an HTTP request.
-//
 // Returns:
 //
 //	bool:  true if the endpoint is considered healthy (status code in expected range), false otherwise.
@@ -115,9 +79,10 @@ func (h *DefaultHealthChecker) CheckEndpointHealth(
 ) (bool, int, bool, error) {
 	log := log.FromContext(ctx)
 
-	req, err := createRequest(ctx, endpoint)
+	// Create request inline
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
-		log.Error(err, ErrFailedToCreateRequest, "endpoint", endpoint)
+		log.Error(err, "Failed to create request", "endpoint", endpoint)
 		return false, 0, false, fmt.Errorf("%s: %w", ErrFailedToCreateRequest, err)
 	}
 
@@ -133,18 +98,38 @@ func (h *DefaultHealthChecker) CheckEndpointHealth(
 		}()
 	}
 
-	healthy := isStatusCodeInRange(resp.StatusCode, expectedStatusCodeRanges)
+	// Inline status code range check
+	healthy := false
+	for _, r := range expectedStatusCodeRanges {
+		if resp.StatusCode >= r.Min && resp.StatusCode <= r.Max {
+			healthy = true
+			break
+		}
+	}
 
 	// Report to the appropriate endpoint
 	var reportSuccess bool
+	reportURL := endpointsSecret.UnhealthyEndpointKey
+	reportMethod := endpointsSecret.UnhealthyEndpointMethod
 	if healthy {
-		reportSuccess = h.reportHealthStatus(ctx, endpointsSecret.HealthyEndpointKey, log)
-	} else {
-		reportSuccess = h.reportHealthStatus(ctx, endpointsSecret.UnhealthyEndpointKey, log)
+		reportURL = endpointsSecret.HealthyEndpointKey
+		reportMethod = endpointsSecret.HealthyEndpointMethod
+	}
+	if reportURL != "" {
+		// Default to GET if method is not specified
+		if reportMethod == "" {
+			reportMethod = "GET"
+		}
+		reportReq, err := http.NewRequestWithContext(ctx, reportMethod, reportURL, nil)
+		if err == nil {
+			reportResp, err := h.doRequestWithRetries(reportReq, log)
+			if err == nil && reportResp != nil && reportResp.StatusCode >= 200 && reportResp.StatusCode < 300 {
+				reportSuccess = true
+			}
+		} else {
+			log.Error(err, "Failed to create report request", "reportURL", reportURL, "method", reportMethod)
+		}
 	}
 
-	if healthy {
-		return true, resp.StatusCode, reportSuccess, nil
-	}
-	return false, resp.StatusCode, reportSuccess, nil
+	return healthy, resp.StatusCode, reportSuccess, nil
 }

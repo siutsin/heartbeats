@@ -62,26 +62,37 @@ func (r *HeartbeatReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// Step 2: Fetch and validate the secret containing endpoints
 	secret, err := r.fetchAndValidateSecret(ctx, req, heartbeat)
 	if err != nil {
-		return ctrl.Result{RequeueAfter: r.Config.RequeueAfter}, nil
+		return r.handleReconcileError(ctx, heartbeat, err)
 	}
 
 	// Step 3: Extract and validate the target endpoint
 	targetEndpoint, err := r.extractTargetEndpoint(ctx, heartbeat, secret)
 	if err != nil {
-		return ctrl.Result{RequeueAfter: r.Config.RequeueAfter}, nil
+		return r.handleReconcileError(ctx, heartbeat, err)
 	}
 
 	// Step 4: Extract report endpoints for health status reporting
 	reportEndpointsSecret, err := r.extractReportEndpoints(ctx, heartbeat, secret)
 	if err != nil {
-		return ctrl.Result{RequeueAfter: r.Config.RequeueAfter}, nil
+		return r.handleReconcileError(ctx, heartbeat, err)
 	}
 
-	// Step 5: Perform health check, validate ranges, and report status
+	// Step 5: Perform health check and report status
 	if err := r.performHealthCheckAndReport(ctx, heartbeat, targetEndpoint, reportEndpointsSecret); err != nil {
 		return ctrl.Result{}, err
 	}
 
+	return ctrl.Result{RequeueAfter: r.Config.RequeueAfter}, nil
+}
+
+// handleReconcileError handles errors during reconciliation by updating status and returning requeue result.
+// This centralises the error handling pattern used across multiple reconciliation steps.
+func (r *HeartbeatReconciler) handleReconcileError(
+	_ context.Context,
+	_ *monitoringv1alpha1.Heartbeat,
+	_ error,
+) (ctrl.Result, error) {
+	// Status is already updated by the calling method, just return requeue
 	return ctrl.Result{RequeueAfter: r.Config.RequeueAfter}, nil
 }
 
@@ -136,22 +147,11 @@ func (r *HeartbeatReconciler) extractTargetEndpoint(
 	heartbeat *monitoringv1alpha1.Heartbeat,
 	secret *corev1.Secret,
 ) (string, error) {
-	endpointBytes, ok := secret.Data[heartbeat.Spec.EndpointsSecret.TargetEndpointKey]
-	if !ok {
-		if err := r.StatusUpdater.UpdateMissingKeyStatus(
-			ctx,
-			heartbeat,
-			heartbeat.Spec.EndpointsSecret.TargetEndpointKey,
-		); err != nil {
-			return "", err
-		}
-		return "", fmt.Errorf(
-			"missing target endpoint key: %s",
-			heartbeat.Spec.EndpointsSecret.TargetEndpointKey,
-		)
+	endpoint, err := r.extractEndpointFromSecret(ctx, heartbeat, secret, heartbeat.Spec.EndpointsSecret.TargetEndpointKey)
+	if err != nil {
+		return "", err
 	}
 
-	endpoint := string(endpointBytes)
 	if endpoint == "" {
 		if err := r.StatusUpdater.UpdateEmptyEndpointStatus(ctx, heartbeat); err != nil {
 			return "", err
@@ -170,44 +170,47 @@ func (r *HeartbeatReconciler) extractReportEndpoints(
 	secret *corev1.Secret,
 ) (monitoringv1alpha1.EndpointsSecret, error) {
 	// Extract healthy endpoint
-	healthyEndpointBytes, ok := secret.Data[heartbeat.Spec.EndpointsSecret.HealthyEndpointKey]
-	if !ok {
-		if err := r.StatusUpdater.UpdateMissingKeyStatus(
-			ctx,
-			heartbeat,
-			heartbeat.Spec.EndpointsSecret.HealthyEndpointKey,
-		); err != nil {
-			return monitoringv1alpha1.EndpointsSecret{}, err
-		}
-		return monitoringv1alpha1.EndpointsSecret{}, fmt.Errorf(
-			"missing healthy endpoint key: %s",
-			heartbeat.Spec.EndpointsSecret.HealthyEndpointKey,
-		)
+	healthyEndpoint, err := r.extractEndpointFromSecret(
+		ctx, heartbeat, secret, heartbeat.Spec.EndpointsSecret.HealthyEndpointKey,
+	)
+	if err != nil {
+		return monitoringv1alpha1.EndpointsSecret{}, err
 	}
 
 	// Extract unhealthy endpoint
-	unhealthyEndpointBytes, ok := secret.Data[heartbeat.Spec.EndpointsSecret.UnhealthyEndpointKey]
-	if !ok {
-		if err := r.StatusUpdater.UpdateMissingKeyStatus(
-			ctx,
-			heartbeat,
-			heartbeat.Spec.EndpointsSecret.UnhealthyEndpointKey,
-		); err != nil {
-			return monitoringv1alpha1.EndpointsSecret{}, err
-		}
-		return monitoringv1alpha1.EndpointsSecret{}, fmt.Errorf(
-			"missing unhealthy endpoint key: %s",
-			heartbeat.Spec.EndpointsSecret.UnhealthyEndpointKey,
-		)
+	unhealthyEndpoint, err := r.extractEndpointFromSecret(
+		ctx, heartbeat, secret, heartbeat.Spec.EndpointsSecret.UnhealthyEndpointKey,
+	)
+	if err != nil {
+		return monitoringv1alpha1.EndpointsSecret{}, err
 	}
 
 	// Create EndpointsSecret with actual URLs for reporting
 	reportEndpointsSecret := monitoringv1alpha1.EndpointsSecret{
-		HealthyEndpointKey:   string(healthyEndpointBytes),
-		UnhealthyEndpointKey: string(unhealthyEndpointBytes),
+		HealthyEndpointKey:   healthyEndpoint,
+		UnhealthyEndpointKey: unhealthyEndpoint,
 	}
 
 	return reportEndpointsSecret, nil
+}
+
+// extractEndpointFromSecret extracts an endpoint URL from the secret by key.
+// Returns an error if the key is missing, which will trigger status update.
+func (r *HeartbeatReconciler) extractEndpointFromSecret(
+	ctx context.Context,
+	heartbeat *monitoringv1alpha1.Heartbeat,
+	secret *corev1.Secret,
+	key string,
+) (string, error) {
+	endpointBytes, ok := secret.Data[key]
+	if !ok {
+		if err := r.StatusUpdater.UpdateMissingKeyStatus(ctx, heartbeat, key); err != nil {
+			return "", err
+		}
+		return "", fmt.Errorf("missing endpoint key: %s", key)
+	}
+
+	return string(endpointBytes), nil
 }
 
 // performHealthCheckAndReport performs the actual health check and reports the status.
@@ -219,12 +222,12 @@ func (r *HeartbeatReconciler) performHealthCheckAndReport(
 	reportEndpointsSecret monitoringv1alpha1.EndpointsSecret,
 ) error {
 	// Validate status code ranges before health check
-	if hasInvalidRange := r.validateStatusCodeRanges(ctx, heartbeat); hasInvalidRange {
+	if r.validateStatusCodeRanges(ctx, heartbeat) {
 		return nil // Early return, status already updated
 	}
 
 	// Perform the health check
-	healthy, statusCode, reportSuccess, err := r.performHealthCheck(
+	healthy, statusCode, reportSuccess, err := r.HealthChecker.CheckEndpointHealth(
 		ctx,
 		targetEndpoint,
 		heartbeat.Spec.ExpectedStatusCodeRanges,
@@ -239,35 +242,29 @@ func (r *HeartbeatReconciler) performHealthCheckAndReport(
 	return r.updateHealthStatus(ctx, heartbeat, healthy, statusCode, reportSuccess)
 }
 
-// performHealthCheck executes the actual health check against the target endpoint.
-func (r *HeartbeatReconciler) performHealthCheck(
-	ctx context.Context,
-	targetEndpoint string,
-	expectedRanges []monitoringv1alpha1.StatusCodeRange,
-	reportEndpointsSecret monitoringv1alpha1.EndpointsSecret,
-) (bool, int, bool, error) {
-	return r.HealthChecker.CheckEndpointHealth(
-		ctx,
-		targetEndpoint,
-		expectedRanges,
-		reportEndpointsSecret,
-	)
-}
-
-// handleHealthCheckError updates the status with health check error information.
+// handleHealthCheckError handles errors during health checks by updating status and returning the error.
 func (r *HeartbeatReconciler) handleHealthCheckError(
 	ctx context.Context,
 	heartbeat *monitoringv1alpha1.Heartbeat,
 	statusCode int,
 	err error,
 ) error {
-	if err := r.StatusUpdater.UpdateHealthCheckErrorStatus(
-		ctx,
-		heartbeat,
-		statusCode,
-		err,
-	); err != nil {
-		return err
+	if updateErr := r.StatusUpdater.UpdateHealthCheckErrorStatus(ctx, heartbeat, statusCode, err); updateErr != nil {
+		return fmt.Errorf("failed to update status after health check error: %w", updateErr)
+	}
+	return fmt.Errorf("health check failed: %w", err)
+}
+
+// updateHealthStatus updates the heartbeat status with health check results.
+func (r *HeartbeatReconciler) updateHealthStatus(
+	ctx context.Context,
+	heartbeat *monitoringv1alpha1.Heartbeat,
+	healthy bool,
+	statusCode int,
+	reportSuccess bool,
+) error {
+	if err := r.StatusUpdater.UpdateHealthStatus(ctx, heartbeat, healthy, statusCode, nil, reportSuccess); err != nil {
+		return fmt.Errorf("failed to update health status: %w", err)
 	}
 	return nil
 }
@@ -292,24 +289,6 @@ func (r *HeartbeatReconciler) validateStatusCodeRanges(
 		}
 	}
 	return false // No invalid ranges found
-}
-
-// updateHealthStatus updates the Heartbeat status with successful health check results.
-func (r *HeartbeatReconciler) updateHealthStatus(
-	ctx context.Context,
-	heartbeat *monitoringv1alpha1.Heartbeat,
-	healthy bool,
-	statusCode int,
-	reportSuccess bool,
-) error {
-	return r.StatusUpdater.UpdateHealthStatus(
-		ctx,
-		heartbeat,
-		healthy,
-		statusCode,
-		nil,
-		reportSuccess,
-	)
 }
 
 // SetupWithManager sets up the controller with the Manager.

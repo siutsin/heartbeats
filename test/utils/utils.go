@@ -104,11 +104,15 @@ func RunWithInput(cmd *exec.Cmd, input string) (string, error) {
 	command := strings.Join(cmd.Args, " ")
 	_, _ = fmt.Fprintf(ginkgo.GinkgoWriter, "running: %s\n", command)
 
-	// Set up stdin pipe
+	// Set up pipes for stdin, stdout, and stderr
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return "", fmt.Errorf("failed to create stdin pipe: %v", err)
 	}
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
 
 	// Start the command
 	if err := cmd.Start(); err != nil {
@@ -124,12 +128,14 @@ func RunWithInput(cmd *exec.Cmd, input string) (string, error) {
 	}
 
 	// Wait for command to complete
-	output, err := cmd.CombinedOutput()
+	err = cmd.Wait()
 	if err != nil {
-		return string(output), fmt.Errorf("%s failed with error: (%v) %s", command, err, string(output))
+		combinedOutput := stdout.String() + stderr.String()
+		return combinedOutput, fmt.Errorf("%s failed with error: (%v) %s", command, err, combinedOutput)
 	}
 
-	return string(output), nil
+	// Return combined output
+	return stdout.String() + stderr.String(), nil
 }
 
 // InstallPrometheusOperator installs the Prometheus Operator to be used for exporting metrics.

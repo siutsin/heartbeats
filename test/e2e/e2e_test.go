@@ -27,7 +27,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/goccy/go-yaml"
@@ -499,8 +498,7 @@ spec:
       max: 299`, heartbeatName, namespace, secretName)
 
 	cmd := exec.Command("kubectl", "apply", "-f", "-")
-	cmd.Stdin = strings.NewReader(heartbeatYAML)
-	_, err := utils.Run(cmd)
+	_, err := utils.RunWithInput(cmd, heartbeatYAML)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to create Heartbeat")
 }
 
@@ -545,8 +543,7 @@ spec:
       max: 299`, heartbeatName, namespace, secretName)
 
 	cmd := exec.Command("kubectl", "apply", "-f", "-")
-	cmd.Stdin = strings.NewReader(heartbeatYAML)
-	_, err := utils.Run(cmd)
+	_, err := utils.RunWithInput(cmd, heartbeatYAML)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to create Heartbeat")
 }
 
@@ -572,8 +569,7 @@ data:
 		base64.StdEncoding.EncodeToString([]byte("https://httpbin.org/status/200")))
 
 	cmd := exec.Command("kubectl", "apply", "-f", "-")
-	cmd.Stdin = strings.NewReader(secretYAML)
-	_, err := utils.Run(cmd)
+	_, err := utils.RunWithInput(cmd, secretYAML)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to create secret")
 }
 
@@ -626,8 +622,7 @@ func createMissingKeysSecret(secretName string) {
 
 	// Now replace the secret with empty data
 	cmd = exec.Command("kubectl", "replace", "-f", "-")
-	cmd.Stdin = strings.NewReader(string(modifiedOutput))
-	_, err = utils.Run(cmd)
+	_, err = utils.RunWithInput(cmd, string(modifiedOutput))
 	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to update secret")
 }
 
@@ -655,8 +650,7 @@ spec:
     - min: 200
       max: 299`, heartbeatName, namespace, secretName)
 	cmd := exec.Command("kubectl", "apply", "-f", "-")
-	cmd.Stdin = strings.NewReader(heartbeatYAML)
-	_, err := utils.Run(cmd)
+	_, err := utils.RunWithInput(cmd, heartbeatYAML)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to create Heartbeat resource")
 }
 
@@ -685,8 +679,7 @@ spec:
       max: 200`, heartbeatName, namespace, secretName)
 
 	cmd := exec.Command("kubectl", "apply", "-f", "-")
-	cmd.Stdin = strings.NewReader(heartbeatYAML)
-	_, err := utils.Run(cmd)
+	_, err := utils.RunWithInput(cmd, heartbeatYAML)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to create Heartbeat")
 }
 
@@ -733,8 +726,7 @@ spec:
       max: 404`, heartbeatName, namespace, secretName)
 
 	cmd := exec.Command("kubectl", "apply", "-f", "-")
-	cmd.Stdin = strings.NewReader(heartbeatYAML)
-	_, err := utils.Run(cmd)
+	_, err := utils.RunWithInput(cmd, heartbeatYAML)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to create Heartbeat")
 }
 
@@ -779,8 +771,7 @@ spec:
       max: 299`, heartbeatName, namespace, secretName)
 
 	cmd := exec.Command("kubectl", "apply", "-f", "-")
-	cmd.Stdin = strings.NewReader(heartbeatYAML)
-	_, err := utils.Run(cmd)
+	_, err := utils.RunWithInput(cmd, heartbeatYAML)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to create Heartbeat")
 }
 
@@ -851,12 +842,15 @@ func verifyHeartbeatMessage(heartbeatName, expectedMessage string) {
 //   - expectedSubstring: The expected substring in the status message
 func verifyHeartbeatMessageContains(heartbeatName, expectedSubstring string) {
 	ginkgo.By("verifying the Heartbeat message indicates missing keys")
-	cmd := exec.Command("kubectl", "get", "heartbeat", heartbeatName,
-		"-o", "jsonpath={.status.message}",
-		"-n", namespace)
-	output, err := utils.Run(cmd)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
-	gomega.Expect(output).To(gomega.ContainSubstring(expectedSubstring))
+	check := func() string {
+		cmd := exec.Command("kubectl", "get", "heartbeat", heartbeatName,
+			"-o", "jsonpath={.status.message}",
+			"-n", namespace)
+		output, err := utils.Run(cmd)
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		return output
+	}
+	gomega.Eventually(check, 30*time.Second, 2*time.Second).Should(gomega.ContainSubstring(expectedSubstring))
 }
 
 // updateSecretToReturn404 updates the secret to return a 404 status code.

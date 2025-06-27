@@ -62,6 +62,18 @@ type EndpointsSecret struct {
 	// UnhealthyEndpointKey is the key in the secret that contains the unhealthy endpoint URL
 	// +kubebuilder:validation:Required
 	UnhealthyEndpointKey string `json:"unhealthyEndpointKey"`
+
+	// HealthyEndpointMethod is the HTTP method to use when reporting to the healthy endpoint
+	// +kubebuilder:validation:Enum=GET;POST;PUT;PATCH
+	// +kubebuilder:default=GET
+	// +optional
+	HealthyEndpointMethod string `json:"healthyEndpointMethod,omitempty"`
+
+	// UnhealthyEndpointMethod is the HTTP method to use when reporting to the unhealthy endpoint
+	// +kubebuilder:validation:Enum=GET;POST;PUT;PATCH
+	// +kubebuilder:default=GET
+	// +optional
+	UnhealthyEndpointMethod string `json:"unhealthyEndpointMethod,omitempty"`
 }
 
 // StatusCodeRange defines a range of HTTP status codes
