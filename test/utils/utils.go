@@ -119,7 +119,9 @@ func RunWithInput(cmd *exec.Cmd, input string) (string, error) {
 	if _, err := stdin.Write([]byte(input)); err != nil {
 		return "", fmt.Errorf("failed to write to stdin: %v", err)
 	}
-	stdin.Close()
+	if err := stdin.Close(); err != nil {
+		return "", fmt.Errorf("failed to close stdin: %v", err)
+	}
 
 	// Wait for command to complete
 	output, err := cmd.CombinedOutput()
