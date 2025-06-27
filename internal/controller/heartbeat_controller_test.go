@@ -40,28 +40,50 @@ const (
 	interval      = "5s"
 )
 
+// testCase defines the structure for table-driven tests in the heartbeat controller.
+// Each test case specifies the expected behaviour and provides setup functions.
 type testCase struct {
-	name           string
-	statusCode     int
-	expectedStatus int
-	expectedMsg    string
-	expectHealthy  bool
-	setupMock      func(*monitoringv1alpha1.Heartbeat, *corev1.Secret)
+	name           string                                              // Name of the test case
+	statusCode     int                                                 // Expected HTTP status code
+	expectedStatus int                                                 // Expected status code in the heartbeat status
+	expectedMsg    string                                              // Expected status message
+	expectHealthy  bool                                                // Whether the endpoint should be marked as healthy
+	setupMock      func(*monitoringv1alpha1.Heartbeat, *corev1.Secret) // Function to set up test data
 }
 
+// mockHealthChecker is a mock implementation of the HealthChecker interface for testing.
+// It allows tests to control the health check results without making actual HTTP requests.
 type mockHealthChecker struct {
-	statusCode int
-	healthy    bool
+	statusCode int  // Status code to return from health checks
+	healthy    bool // Whether the endpoint should be considered healthy
 }
 
+// CheckEndpointHealth implements the HealthChecker interface for the mock.
+// It returns the predefined status code and health status without making actual HTTP requests.
+//
+// Parameters:
+//   - ctx: Context for the operation (unused in mock)
+//   - endpoint: Endpoint URL (unused in mock)
+//   - expectedRanges: Expected status code ranges (unused in mock)
+//   - endpointsSecret: Endpoints secret configuration (unused in mock)
+//
+// Returns:
+//   - bool: The predefined healthy status
+//   - int: The predefined status code
+//   - bool: Always returns true for report success
+//   - error: Always returns nil (no errors in mock)
 func (m *mockHealthChecker) CheckEndpointHealth(
 	_ context.Context,
 	_ string,
 	_ []monitoringv1alpha1.StatusCodeRange,
-) (bool, int, error) {
-	return m.healthy, m.statusCode, nil
+	_ monitoringv1alpha1.EndpointsSecret,
+) (bool, int, bool, error) {
+	return m.healthy, m.statusCode, true, nil
 }
 
+// TestHeartbeatReconciler runs a comprehensive test suite for the HeartbeatReconciler.
+// It uses table-driven tests to verify various scenarios including healthy endpoints,
+// unhealthy endpoints, invalid configurations, and error conditions.
 func TestHeartbeatReconciler(t *testing.T) {
 	scheme := runtime.NewScheme()
 	_ = monitoringv1alpha1.AddToScheme(scheme)
@@ -79,7 +101,9 @@ func TestHeartbeatReconciler(t *testing.T) {
 					{Min: 200, Max: 299},
 				}
 				s.Data = map[string][]byte{
-					"targetEndpoint": []byte("https://example.com"),
+					"targetEndpoint":    []byte("https://example.com"),
+					"healthyEndpoint":   []byte("https://healthy.example.com"),
+					"unhealthyEndpoint": []byte("https://unhealthy.example.com"),
 				}
 			},
 		},
@@ -94,14 +118,16 @@ func TestHeartbeatReconciler(t *testing.T) {
 					{Min: 200, Max: 299},
 				}
 				s.Data = map[string][]byte{
-					"targetEndpoint": []byte("https://example.com"),
+					"targetEndpoint":    []byte("https://example.com"),
+					"healthyEndpoint":   []byte("https://healthy.example.com"),
+					"unhealthyEndpoint": []byte("https://unhealthy.example.com"),
 				}
 			},
 		},
 		{
 			name:           "invalid status code range",
-			statusCode:     http.StatusOK,
-			expectedStatus: http.StatusOK,
+			statusCode:     0, // No status code since health check should not be performed
+			expectedStatus: 0,
 			expectedMsg:    controller.ErrInvalidStatusCodeRange,
 			expectHealthy:  false,
 			setupMock: func(h *monitoringv1alpha1.Heartbeat, s *corev1.Secret) {
@@ -109,7 +135,9 @@ func TestHeartbeatReconciler(t *testing.T) {
 					{Min: 300, Max: 200},
 				}
 				s.Data = map[string][]byte{
-					"targetEndpoint": []byte("https://example.com"),
+					"targetEndpoint":    []byte("https://example.com"),
+					"healthyEndpoint":   []byte("https://healthy.example.com"),
+					"unhealthyEndpoint": []byte("https://unhealthy.example.com"),
 				}
 			},
 		},
@@ -137,7 +165,9 @@ func TestHeartbeatReconciler(t *testing.T) {
 					{Min: 200, Max: 299},
 				}
 				s.Data = map[string][]byte{
-					"targetEndpoint": []byte(""),
+					"targetEndpoint":    []byte(""),
+					"healthyEndpoint":   []byte("https://healthy.example.com"),
+					"unhealthyEndpoint": []byte("https://unhealthy.example.com"),
 				}
 			},
 		},
@@ -155,8 +185,10 @@ func TestHeartbeatReconciler(t *testing.T) {
 				},
 				Spec: monitoringv1alpha1.HeartbeatSpec{
 					EndpointsSecret: monitoringv1alpha1.EndpointsSecret{
-						Name:              secretName,
-						TargetEndpointKey: "targetEndpoint",
+						Name:                 secretName,
+						TargetEndpointKey:    "targetEndpoint",
+						HealthyEndpointKey:   "healthyEndpoint",
+						UnhealthyEndpointKey: "unhealthyEndpoint",
 					},
 					Interval: interval,
 				},

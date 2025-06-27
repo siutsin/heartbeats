@@ -58,15 +58,20 @@ vet: ## Run go vet against code.
 	go vet ./...
 
 .PHONY: test
-test: manifests generate fmt vet setup-envtest ## Run tests.
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test -race ./internal/... -coverprofile cover.out
+test: manifests generate fmt vet setup-envtest ## Run unit tests without race detection (local development).
+	CGO_ENABLED=0 KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test -race ./internal/... -coverprofile cover.out
 
-# TODO(user): To use a different vendor for e2e tests, modify the setup under 'tests/e2e'.
-# The default setup assumes Kind is pre-installed and builds/loads the Manager Docker image locally.
-# CertManager is installed by default; skip with:
-# - CERT_MANAGER_INSTALL_SKIP=true
-.PHONY: test-e2e
-test-e2e: manifests generate fmt vet docker-build ## Run the e2e tests. Use LOCAL=true for fresh kind cluster.
+.PHONY: test-ci
+test-ci: manifests generate fmt vet setup-envtest ## Run unit tests with race detection for CI.
+	CGO_ENABLED=1 KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test -race ./internal/... -coverprofile cover.out
+
+# Shared function for e2e test setup and teardown
+# This eliminates duplication between test-e2e and test-e2e-ci targets
+# Parameters:
+#   $1 - CGO_ENABLED value (0 for local, 1 for CI)
+#   $2 - Test description for logging
+#   $3 - Additional go test flags (e.g., -race for CI)
+define run-e2e-tests
 	@command -v $(KIND) >/dev/null 2>&1 || { \
 		echo "Kind is not installed. Please install Kind manually."; \
 		exit 1; \
@@ -75,10 +80,28 @@ test-e2e: manifests generate fmt vet docker-build ## Run the e2e tests. Use LOCA
 		kind delete cluster --name kind; \
 		kind create cluster --name kind --config test/e2e/kind-config.yaml; \
 	fi
-	go test -race ./test/e2e/ -v -ginkgo.v
+	@echo "$(2)..."
+	CGO_ENABLED=$(1) go test $(3) ./test/e2e/ -v -ginkgo.v
+	@echo "Reverting kustomization file changes..."
+	@git checkout config/manager/kustomization.yaml
 	@if [ "$(LOCAL)" = "true" ]; then \
 		kind delete cluster --name kind; \
 	fi
+endef
+
+# TODO(user): To use a different vendor for e2e tests, modify the setup under 'tests/e2e'.
+# The default setup assumes Kind is pre-installed and builds/loads the Manager Docker image locally.
+# CertManager is installed by default; skip with:
+# - CERT_MANAGER_INSTALL_SKIP=true
+.PHONY: test-e2e
+test-e2e: manifests generate fmt vet docker-build ## Run e2e tests without race detection (local development). Use LOCAL=true for fresh kind cluster.
+	$(call run-e2e-tests,0,Running e2e tests,)
+
+.PHONY: test-e2e-ci
+test-e2e-ci: manifests generate fmt vet docker-build ## Run e2e tests with race detection for CI. Use LOCAL=true for fresh kind cluster.
+	$(call run-e2e-tests,1,Running e2e tests with race detection,-race)
+
+##@ Linting
 
 .PHONY: lint
 lint: golangci-lint ## Run golangci-lint linter
@@ -92,15 +115,33 @@ lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes
 lint-config: golangci-lint ## Verify golangci-lint linter configuration
 	$(GOLANGCI_LINT) config verify
 
+# Install markdownlint
+.PHONY: lint-markdown-install
+lint-markdown-install: ## Install markdownlint-cli2 for markdown linting
+	@echo "Installing markdownlint-cli2..."
+	brew install markdownlint-cli2
+
+# Lint markdown files
+.PHONY: lint-markdown
+lint-markdown: ## Lint markdown files using markdownlint-cli2
+	@echo "Linting markdown files..."
+	markdownlint-cli2 '**/*.md'
+
+# Fix markdown files
+.PHONY: lint-markdown-fix
+lint-markdown-fix: ## Fix markdown files using markdownlint-cli2
+	@echo "Fixing markdown files..."
+	markdownlint-cli2 '**/*.md' --fix
+
 ##@ Build
 
 .PHONY: build
 build: manifests generate fmt vet ## Build manager binary.
-	go build -o bin/manager cmd/main.go
+	CGO_ENABLED=0 go build -o bin/manager cmd/main.go
 
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.
-	go run ./cmd/main.go
+	CGO_ENABLED=0 go run ./cmd/main.go
 
 # If you wish to build the manager image targeting other platforms you can use the --platform flag.
 # (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.
@@ -225,21 +266,3 @@ mv $(1) $(1)-$(3) ;\
 } ;\
 ln -sf $(1)-$(3) $(1)
 endef
-
-# Install markdownlint
-.PHONY: lint-markdown-install
-lint-markdown-install:
-	@echo "Installing markdownlint-cli2..."
-	brew install markdownlint-cli2
-
-# Lint markdown files
-.PHONY: lint-markdown
-lint-markdown:
-	@echo "Linting markdown files..."
-	markdownlint-cli2 '**/*.md'
-
-# Fix markdown files
-.PHONY: lint-markdown-fix
-lint-markdown-fix:
-	@echo "Fixing markdown files..."
-	markdownlint-cli2 '**/*.md' --fix

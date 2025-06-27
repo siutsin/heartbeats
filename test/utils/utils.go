@@ -14,6 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// Package utils provides utility functions for e2e testing.
+// This package contains helper functions for executing commands, managing Kubernetes resources,
+// and handling common testing operations like installing/uninstalling operators and checking CRDs.
 package utils
 
 import (
@@ -27,20 +30,39 @@ import (
 	ginkgo "github.com/onsi/ginkgo/v2" //nolint:revive
 )
 
+// Constants for operator versions and URLs
 const (
+	// prometheusOperatorVersion specifies the version of Prometheus Operator to install
 	prometheusOperatorVersion = "v0.77.1"
-	prometheusOperatorURL     = "https://github.com/prometheus-operator/prometheus-operator/" +
+	// prometheusOperatorURL is the base URL for downloading Prometheus Operator bundle
+	prometheusOperatorURL = "https://github.com/prometheus-operator/prometheus-operator/" +
 		"releases/download/%s/bundle.yaml"
 
+	// certmanagerVersion specifies the version of cert-manager to install
 	certmanagerVersion = "v1.16.3"
+	// certmanagerURLTmpl is the template URL for downloading cert-manager bundle
 	certmanagerURLTmpl = "https://github.com/cert-manager/cert-manager/releases/download/%s/cert-manager.yaml"
 )
 
+// warnError logs a warning message when an error occurs during cleanup operations.
+// This function is used for non-critical errors that shouldn't fail the test.
+//
+// Parameters:
+//   - err: The error to log as a warning
 func warnError(err error) {
 	_, _ = fmt.Fprintf(ginkgo.GinkgoWriter, "warning: %v\n", err)
 }
 
-// Run executes the provided command within this context
+// Run executes the provided command within the project context.
+// It sets up the working directory, environment variables, and captures both stdout and stderr.
+// The function logs the command being executed and returns the combined output.
+//
+// Parameters:
+//   - cmd: The command to execute
+//
+// Returns:
+//   - string: The combined stdout and stderr output
+//   - error: Any error that occurred during command execution
 func Run(cmd *exec.Cmd) (string, error) {
 	dir, _ := GetProjectDir()
 	cmd.Dir = dir
@@ -60,7 +82,67 @@ func Run(cmd *exec.Cmd) (string, error) {
 	return string(output), nil
 }
 
-// InstallPrometheusOperator installs the prometheus Operator to be used to export the enabled metrics.
+// RunWithInput executes the provided command with input from stdin.
+// This is useful for commands like `kubectl apply -f -` that expect YAML input.
+//
+// Parameters:
+//   - cmd: The command to execute
+//   - input: The input string to provide via stdin
+//
+// Returns:
+//   - string: The combined stdout and stderr output
+//   - error: Any error that occurred during command execution
+func RunWithInput(cmd *exec.Cmd, input string) (string, error) {
+	dir, _ := GetProjectDir()
+	cmd.Dir = dir
+
+	if err := os.Chdir(cmd.Dir); err != nil {
+		_, _ = fmt.Fprintf(ginkgo.GinkgoWriter, "chdir dir: %s\n", err)
+	}
+
+	cmd.Env = append(os.Environ(), "GO111MODULE=on")
+	command := strings.Join(cmd.Args, " ")
+	_, _ = fmt.Fprintf(ginkgo.GinkgoWriter, "running: %s\n", command)
+
+	// Set up pipes for stdin, stdout, and stderr
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return "", fmt.Errorf("failed to create stdin pipe: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	// Start the command
+	if err := cmd.Start(); err != nil {
+		return "", fmt.Errorf("failed to start command: %v", err)
+	}
+
+	// Write input to stdin
+	if _, err := stdin.Write([]byte(input)); err != nil {
+		return "", fmt.Errorf("failed to write to stdin: %v", err)
+	}
+	if err := stdin.Close(); err != nil {
+		return "", fmt.Errorf("failed to close stdin: %v", err)
+	}
+
+	// Wait for command to complete
+	err = cmd.Wait()
+	if err != nil {
+		combinedOutput := stdout.String() + stderr.String()
+		return combinedOutput, fmt.Errorf("%s failed with error: (%v) %s", command, err, combinedOutput)
+	}
+
+	// Return combined output
+	return stdout.String() + stderr.String(), nil
+}
+
+// InstallPrometheusOperator installs the Prometheus Operator to be used for exporting metrics.
+// It downloads and applies the operator bundle from the official GitHub releases.
+//
+// Returns:
+//   - error: Any error that occurred during installation
 func InstallPrometheusOperator() error {
 	url := fmt.Sprintf(prometheusOperatorURL, prometheusOperatorVersion)
 	cmd := exec.Command("kubectl", "create", "-f", url)
@@ -68,7 +150,9 @@ func InstallPrometheusOperator() error {
 	return err
 }
 
-// UninstallPrometheusOperator uninstalls the prometheus
+// UninstallPrometheusOperator uninstalls the Prometheus Operator.
+// It removes the operator bundle that was previously installed.
+// Errors during uninstallation are logged as warnings since they're not critical.
 func UninstallPrometheusOperator() {
 	url := fmt.Sprintf(prometheusOperatorURL, prometheusOperatorVersion)
 	cmd := exec.Command("kubectl", "delete", "-f", url)
@@ -79,8 +163,12 @@ func UninstallPrometheusOperator() {
 
 // IsPrometheusCRDsInstalled checks if any Prometheus CRDs are installed
 // by verifying the existence of key CRDs related to Prometheus.
+// This function is useful for determining if Prometheus Operator is already installed.
+//
+// Returns:
+//   - bool: True if any Prometheus CRDs are found, false otherwise
 func IsPrometheusCRDsInstalled() bool {
-	// List of common Prometheus CRDs
+	// List of common Prometheus CRDs to check for
 	prometheusCRDs := []string{
 		"prometheuses.monitoring.coreos.com",
 		"prometheusrules.monitoring.coreos.com",
@@ -104,7 +192,9 @@ func IsPrometheusCRDsInstalled() bool {
 	return false
 }
 
-// UninstallCertManager uninstalls the cert manager
+// UninstallCertManager uninstalls the cert-manager bundle.
+// It removes the cert-manager that was previously installed.
+// Errors during uninstallation are logged as warnings since they're not critical.
 func UninstallCertManager() {
 	url := fmt.Sprintf(certmanagerURLTmpl, certmanagerVersion)
 	cmd := exec.Command("kubectl", "delete", "-f", url)
@@ -113,13 +203,20 @@ func UninstallCertManager() {
 	}
 }
 
-// InstallCertManager installs the cert manager bundle.
+// InstallCertManager installs the cert-manager bundle.
+// It downloads and applies the cert-manager bundle, then waits for the webhook to be ready.
+// The webhook readiness check is important because cert-manager may be re-installed
+// after uninstalling on a cluster.
+//
+// Returns:
+//   - error: Any error that occurred during installation
 func InstallCertManager() error {
 	url := fmt.Sprintf(certmanagerURLTmpl, certmanagerVersion)
 	cmd := exec.Command("kubectl", "apply", "-f", url)
 	if _, err := Run(cmd); err != nil {
 		return err
 	}
+
 	// Wait for cert-manager-webhook to be ready, which can take time if cert-manager
 	// was re-installed after uninstalling on a cluster.
 	cmd = exec.Command("kubectl", "wait", "deployment.apps/cert-manager-webhook",
@@ -134,8 +231,12 @@ func InstallCertManager() error {
 
 // IsCertManagerCRDsInstalled checks if any Cert Manager CRDs are installed
 // by verifying the existence of key CRDs related to Cert Manager.
+// This function is useful for determining if cert-manager is already installed.
+//
+// Returns:
+//   - bool: True if any Cert Manager CRDs are found, false otherwise
 func IsCertManagerCRDsInstalled() bool {
-	// List of common Cert Manager CRDs
+	// List of common Cert Manager CRDs to check for
 	certManagerCRDs := []string{
 		"certificates.cert-manager.io",
 		"issuers.cert-manager.io",
@@ -165,7 +266,15 @@ func IsCertManagerCRDsInstalled() bool {
 	return false
 }
 
-// LoadImageToKindClusterWithName loads a local docker image to the kind cluster
+// LoadImageToKindClusterWithName loads a local docker image to the kind cluster.
+// This function is useful for testing with custom images that aren't available in public registries.
+// The cluster name can be overridden by setting the KIND_CLUSTER environment variable.
+//
+// Parameters:
+//   - name: The name of the docker image to load
+//
+// Returns:
+//   - error: Any error that occurred during image loading
 func LoadImageToKindClusterWithName(name string) error {
 	cluster := "kind"
 	if v, ok := os.LookupEnv("KIND_CLUSTER"); ok {
@@ -179,6 +288,13 @@ func LoadImageToKindClusterWithName(name string) error {
 
 // GetNonEmptyLines converts given command output string into individual objects
 // according to line breakers, and ignores the empty elements in it.
+// This function is useful for parsing command output that contains multiple lines.
+//
+// Parameters:
+//   - output: The command output string to parse
+//
+// Returns:
+//   - []string: A slice of non-empty lines from the output
 func GetNonEmptyLines(output string) []string {
 	var res []string
 	elements := strings.Split(output, "\n")
@@ -191,7 +307,13 @@ func GetNonEmptyLines(output string) []string {
 	return res
 }
 
-// GetProjectDir will return the directory where the project is
+// GetProjectDir will return the directory where the project is located.
+// It handles the case where the current working directory might be in a subdirectory
+// like test/e2e and adjusts the path accordingly.
+//
+// Returns:
+//   - string: The project root directory path
+//   - error: Any error that occurred while getting the working directory
 func GetProjectDir() (string, error) {
 	wd, err := os.Getwd()
 	if err != nil {
@@ -201,8 +323,17 @@ func GetProjectDir() (string, error) {
 	return wd, nil
 }
 
-// UncommentCode searches for target in the file and remove the comment prefix
+// UncommentCode searches for target in the file and removes the comment prefix
 // of the target content. The target content may span multiple lines.
+// This function is useful for programmatically enabling features in configuration files.
+//
+// Parameters:
+//   - filename: The path to the file to modify
+//   - target: The target content to uncomment
+//   - prefix: The comment prefix to remove (e.g., "// " or "# ")
+//
+// Returns:
+//   - error: Any error that occurred during file modification
 func UncommentCode(filename, target, prefix string) error {
 	// false positive
 	// nolint:gosec
