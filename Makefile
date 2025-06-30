@@ -49,6 +49,11 @@ manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and Cust
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
 
+.PHONY: generate-mocks
+generate-mocks: mockery ## Generate mock objects using mockery.
+	$(MOCKERY) --name=HealthChecker --dir=internal/controller --output=test/mocks --outpkg=mocks --with-expecter
+	$(MOCKERY) --name=Logger --dir=/Users/simon/go/pkg/mod/github.com/go-logr/logr@v1.4.3 --output=test/mocks --outpkg=mocks --with-expecter
+
 .PHONY: fmt
 fmt: ## Run go fmt against code.
 	go fmt ./...
@@ -59,11 +64,11 @@ vet: ## Run go vet against code.
 
 .PHONY: test
 test: manifests generate fmt vet setup-envtest ## Run unit tests without race detection (local development).
-	CGO_ENABLED=0 KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test -race ./internal/... -coverprofile cover.out
+	CGO_ENABLED=0 KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test -race ./internal/... -coverprofile cover.out -coverpkg=./internal/... -covermode=atomic
 
 .PHONY: test-ci
 test-ci: manifests generate fmt vet setup-envtest ## Run unit tests with race detection for CI.
-	CGO_ENABLED=1 KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test -race ./internal/... -coverprofile cover.out
+	CGO_ENABLED=1 KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test -race ./internal/... -coverprofile cover.out -coverpkg=./internal/... -covermode=atomic
 
 # Shared function for e2e test setup and teardown
 # This eliminates duplication between test-e2e and test-e2e-ci targets
@@ -213,6 +218,7 @@ KUSTOMIZE ?= $(LOCALBIN)/kustomize
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest
 GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
+MOCKERY ?= $(LOCALBIN)/mockery
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.6.0
@@ -222,6 +228,7 @@ ENVTEST_VERSION ?= $(shell go list -m -f "{{ .Version }}" sigs.k8s.io/controller
 #ENVTEST_K8S_VERSION is the version of Kubernetes to use for setting up ENVTEST binaries (i.e. 1.31)
 ENVTEST_K8S_VERSION ?= $(shell go list -m -f "{{ .Version }}" k8s.io/api | awk -F'[v.]' '{printf "1.%d", $$3}')
 GOLANGCI_LINT_VERSION ?= v1.63.4
+MOCKERY_VERSION ?= v2.53.4
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
@@ -250,6 +257,11 @@ $(ENVTEST): $(LOCALBIN)
 golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
 $(GOLANGCI_LINT): $(LOCALBIN)
 	$(call go-install-tool,$(GOLANGCI_LINT),github.com/golangci/golangci-lint/cmd/golangci-lint,$(GOLANGCI_LINT_VERSION))
+
+.PHONY: mockery
+mockery: $(MOCKERY) ## Download mockery locally if necessary.
+$(MOCKERY): $(LOCALBIN)
+	$(call go-install-tool,$(MOCKERY),github.com/vektra/mockery/v2,$(MOCKERY_VERSION))
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary

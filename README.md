@@ -232,9 +232,41 @@ make lint-markdown
 
 ### Logging
 
-The operator uses structured logging with `sigs.k8s.io/controller-runtime/pkg/log` for consistency
-across the Kubernetes ecosystem. All log messages include relevant context and error details for
-effective debugging.
+The operator uses structured logging via the `logr` interface, integrated with controller-runtime's logger.
+The `internal/logger` package is generic and only provides helpers for creating loggers with contextual information
+(such as namespace and name).
+
+**No business logic or business-specific logging helpers are present in the logger package.**
+
+All business-specific logging (such as health check results, reconciliation events, etc.) is performed inline in the
+controller and related business logic, using standard log levels and structured key-value pairs.
+
+#### Example Usage
+
+```go
+log := logger.WithRequest(ctx, "heartbeat-reconciler", req.Namespace, req.Name)
+log.V(1).Info("Starting reconciliation", "namespace", req.Namespace, "name", req.Name)
+log.Error(err, "Failed to fetch resource", "namespace", req.Namespace, "name", req.Name)
+```
+
+#### Example Log Output
+
+```json
+{
+  "time": "2025-06-27T21:58:58.917163+01:00",
+  "level": "INFO",
+  "msg": "Starting reconciliation",
+  "namespace": "default",
+  "name": "api-health"
+}
+```
+
+#### Log Levels
+
+- **INFO**: General operational information, health check results
+- **ERROR**: Error conditions, failed health checks, configuration issues
+- **DEBUG/V(1)**: Detailed debugging information, HTTP request details
+- **V(2)**: Verbose debugging, internal state information
 
 ## Monitoring
 

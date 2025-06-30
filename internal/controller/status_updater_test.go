@@ -97,91 +97,92 @@ func TestUpdateStatus_Basic(t *testing.T) {
 	g.Expect(heartbeat.Status.LastChecked).NotTo(gomega.BeNil())
 }
 
+// errorConditionTestCases defines the test cases for error condition status updates.
+var errorConditionTestCases = []struct {
+	name            string
+	updateFunc      func(*controller.StatusUpdater, context.Context, *monitoringv1alpha1.Heartbeat) error
+	expectedStatus  int
+	expectedHealthy bool
+	expectedMsg     string
+}{
+	{
+		name: "update secret error status",
+		updateFunc: func(u *controller.StatusUpdater, ctx context.Context, h *monitoringv1alpha1.Heartbeat) error {
+			return u.UpdateSecretErrorStatus(ctx, h, errors.New("test error"))
+		},
+		expectedStatus:  0,
+		expectedHealthy: false,
+		expectedMsg:     controller.ErrFailedToGetSecret,
+	},
+	{
+		name: "update missing key status",
+		updateFunc: func(u *controller.StatusUpdater, ctx context.Context, h *monitoringv1alpha1.Heartbeat) error {
+			return u.UpdateMissingKeyStatus(ctx, h, "test-key")
+		},
+		expectedStatus:  0,
+		expectedHealthy: false,
+		expectedMsg:     controller.ErrMissingRequiredKey,
+	},
+	{
+		name: "update empty endpoint status",
+		updateFunc: func(u *controller.StatusUpdater, ctx context.Context, h *monitoringv1alpha1.Heartbeat) error {
+			return u.UpdateEmptyEndpointStatus(ctx, h)
+		},
+		expectedStatus:  0,
+		expectedHealthy: false,
+		expectedMsg:     controller.ErrEndpointNotSpecified,
+	},
+	{
+		name: "update health check error status",
+		updateFunc: func(u *controller.StatusUpdater, ctx context.Context, h *monitoringv1alpha1.Heartbeat) error {
+			return u.UpdateHealthCheckErrorStatus(ctx, h, 500, errors.New("test error"))
+		},
+		expectedStatus:  500,
+		expectedHealthy: false,
+		expectedMsg:     controller.ErrFailedToCheckEndpoint,
+	},
+	{
+		name: "update invalid range status",
+		updateFunc: func(u *controller.StatusUpdater, ctx context.Context, h *monitoringv1alpha1.Heartbeat) error {
+			return u.UpdateInvalidRangeStatus(ctx, h, 500)
+		},
+		expectedStatus:  500,
+		expectedHealthy: false,
+		expectedMsg:     controller.ErrInvalidStatusCodeRange,
+	},
+}
+
 // TestUpdateStatus_ErrorConditions tests status updates for various error conditions.
 // It verifies that different error scenarios are handled correctly with appropriate status messages.
 func TestUpdateStatus_ErrorConditions(t *testing.T) {
-	tests := []struct {
-		name            string
-		updateFunc      func(*controller.StatusUpdater, context.Context, *monitoringv1alpha1.Heartbeat) error
-		expectedStatus  int
-		expectedHealthy bool
-		expectedMsg     string
-	}{
-		{
-			name: "update secret error status",
-			updateFunc: func(u *controller.StatusUpdater, ctx context.Context, h *monitoringv1alpha1.Heartbeat) error {
-				return u.UpdateSecretErrorStatus(ctx, h, errors.New("test error"))
-			},
-			expectedStatus:  0,
-			expectedHealthy: false,
-			expectedMsg:     controller.ErrFailedToGetSecret,
-		},
-		{
-			name: "update missing key status",
-			updateFunc: func(u *controller.StatusUpdater, ctx context.Context, h *monitoringv1alpha1.Heartbeat) error {
-				return u.UpdateMissingKeyStatus(ctx, h, "test-key")
-			},
-			expectedStatus:  0,
-			expectedHealthy: false,
-			expectedMsg:     controller.ErrMissingRequiredKey,
-		},
-		{
-			name: "update empty endpoint status",
-			updateFunc: func(u *controller.StatusUpdater, ctx context.Context, h *monitoringv1alpha1.Heartbeat) error {
-				return u.UpdateEmptyEndpointStatus(ctx, h)
-			},
-			expectedStatus:  0,
-			expectedHealthy: false,
-			expectedMsg:     controller.ErrEndpointNotSpecified,
-		},
-		{
-			name: "update health check error status",
-			updateFunc: func(u *controller.StatusUpdater, ctx context.Context, h *monitoringv1alpha1.Heartbeat) error {
-				return u.UpdateHealthCheckErrorStatus(ctx, h, 500, errors.New("test error"))
-			},
-			expectedStatus:  500,
-			expectedHealthy: false,
-			expectedMsg:     controller.ErrFailedToCheckEndpoint,
-		},
-		{
-			name: "update invalid range status",
-			updateFunc: func(u *controller.StatusUpdater, ctx context.Context, h *monitoringv1alpha1.Heartbeat) error {
-				return u.UpdateInvalidRangeStatus(ctx, h, 500)
-			},
-			expectedStatus:  500,
-			expectedHealthy: false,
-			expectedMsg:     controller.ErrInvalidStatusCodeRange,
-		},
-	}
-
-	for _, tt := range tests {
+	for _, tt := range errorConditionTestCases {
 		t.Run(tt.name, func(t *testing.T) {
-			g := gomega.NewWithT(t)
-
-			heartbeat := &monitoringv1alpha1.Heartbeat{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-heartbeat",
-					Namespace: "default",
-				},
-			}
-
-			client := fake.NewClientBuilder().
-				WithScheme(setupScheme()).
-				WithObjects(heartbeat).
-				WithStatusSubresource(heartbeat).
-				Build()
-
-			updater := controller.NewStatusUpdater(client)
-
-			err := tt.updateFunc(updater, context.Background(), heartbeat)
-
-			g.Expect(err).NotTo(gomega.HaveOccurred())
-			g.Expect(heartbeat.Status.LastStatus).To(gomega.Equal(tt.expectedStatus))
-			g.Expect(heartbeat.Status.Healthy).To(gomega.Equal(tt.expectedHealthy))
-			g.Expect(heartbeat.Status.Message).To(gomega.Equal(tt.expectedMsg))
-			g.Expect(heartbeat.Status.LastChecked).NotTo(gomega.BeNil())
+			runErrorConditionTest(t, tt)
 		})
 	}
+}
+
+// runErrorConditionTest executes a single error condition test case.
+func runErrorConditionTest(t *testing.T, tt struct {
+	name            string
+	updateFunc      func(*controller.StatusUpdater, context.Context, *monitoringv1alpha1.Heartbeat) error
+	expectedStatus  int
+	expectedHealthy bool
+	expectedMsg     string
+}) {
+	g := gomega.NewWithT(t)
+
+	heartbeat := createTestHeartbeat()
+	client := createTestClient(heartbeat)
+	updater := controller.NewStatusUpdater(client)
+
+	err := tt.updateFunc(updater, context.Background(), heartbeat)
+
+	g.Expect(err).NotTo(gomega.HaveOccurred())
+	g.Expect(heartbeat.Status.LastStatus).To(gomega.Equal(tt.expectedStatus))
+	g.Expect(heartbeat.Status.Healthy).To(gomega.Equal(tt.expectedHealthy))
+	g.Expect(heartbeat.Status.Message).To(gomega.Equal(tt.expectedMsg))
+	g.Expect(heartbeat.Status.LastChecked).NotTo(gomega.BeNil())
 }
 
 // TestUpdateHealthStatus_HealthyEndpoint tests health status updates for healthy endpoints.
