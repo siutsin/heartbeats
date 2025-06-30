@@ -46,21 +46,107 @@ func NewHealthChecker(config Config) HealthChecker {
 func (h *DefaultHealthChecker) doRequestWithRetries(req *http.Request, log logr.Logger) (*http.Response, error) {
 	var lastErr error
 	for i := 0; i < h.config.MaxRetries; i++ {
-		resp, err := h.client.Do(req)
+		h.logRequestStart(req, log, i+1)
+
+		resp, err := h.executeRequest(req, log, i+1)
 		if err != nil {
-			log.Error(err, "Failed to make request", "endpoint", req.URL.String(), "attempt", i+1)
-			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-				log.Error(err, "Request timeout", "timeout", h.config.DefaultTimeout)
-				lastErr = fmt.Errorf("%s: %w", ErrEndpointTimeout, err)
-			} else {
-				lastErr = fmt.Errorf("%s: %w", ErrFailedToMakeRequest, err)
-			}
-			time.Sleep(h.config.RetryDelay)
+			lastErr = h.handleRequestError(req, log, err, i+1)
+			h.handleRetry(req, log, i)
 			continue
 		}
+
+		h.logSuccessfulRequest(req, log, resp, i+1)
 		return resp, nil
 	}
+
+	h.logFinalFailure(req, log, lastErr)
 	return nil, lastErr
+}
+
+// logRequestStart logs the start of an HTTP request attempt.
+func (h *DefaultHealthChecker) logRequestStart(req *http.Request, log logr.Logger, attempt int) {
+	log.V(1).Info("Starting HTTP request",
+		"method", req.Method,
+		"endpoint", req.URL.String(),
+		"attempt", attempt,
+		"max_attempts", h.config.MaxRetries,
+		"timeout", h.config.DefaultTimeout,
+	)
+}
+
+// executeRequest performs a single HTTP request and measures its duration.
+func (h *DefaultHealthChecker) executeRequest(req *http.Request, log logr.Logger, attempt int) (*http.Response, error) {
+	startTime := time.Now()
+	resp, err := h.client.Do(req)
+	duration := time.Since(startTime)
+
+	if err != nil {
+		log.Error(err, "HTTP request failed",
+			"method", req.Method,
+			"endpoint", req.URL.String(),
+			"attempt", attempt,
+			"duration_ms", duration.Milliseconds(),
+		)
+	}
+
+	return resp, err
+}
+
+// handleRequestError processes and categorises request errors.
+func (h *DefaultHealthChecker) handleRequestError(req *http.Request, log logr.Logger, err error, attempt int) error {
+	if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+		log.Error(err, "Request timeout",
+			"method", req.Method,
+			"endpoint", req.URL.String(),
+			"timeout", h.config.DefaultTimeout,
+			"attempt", attempt,
+		)
+		return fmt.Errorf("%s: %w", ErrEndpointTimeout, err)
+	}
+
+	log.Error(err, "Network error",
+		"method", req.Method,
+		"endpoint", req.URL.String(),
+		"attempt", attempt,
+	)
+	return fmt.Errorf("%s: %w", ErrFailedToMakeRequest, err)
+}
+
+// handleRetry manages retry logic and delays between attempts.
+func (h *DefaultHealthChecker) handleRetry(req *http.Request, log logr.Logger, attemptIndex int) {
+	if attemptIndex < h.config.MaxRetries-1 {
+		log.V(1).Info("Retrying request",
+			"method", req.Method,
+			"endpoint", req.URL.String(),
+			"attempt", attemptIndex+2,
+			"timeout", h.config.RetryDelay,
+		)
+		time.Sleep(h.config.RetryDelay)
+	}
+}
+
+// logSuccessfulRequest logs details of a successful HTTP request.
+func (h *DefaultHealthChecker) logSuccessfulRequest(
+	req *http.Request,
+	log logr.Logger,
+	resp *http.Response,
+	attempt int,
+) {
+	log.V(1).Info("HTTP request successful",
+		"method", req.Method,
+		"endpoint", req.URL.String(),
+		"status_code", resp.StatusCode,
+		"attempt", attempt,
+	)
+}
+
+// logFinalFailure logs the final failure after all retry attempts are exhausted.
+func (h *DefaultHealthChecker) logFinalFailure(req *http.Request, log logr.Logger, lastErr error) {
+	log.Error(lastErr, "All retry attempts failed",
+		"method", req.Method,
+		"endpoint", req.URL.String(),
+		"max_attempts", h.config.MaxRetries,
+	)
 }
 
 // CheckEndpointHealth checks if the endpoint is healthy by making an HTTP request.
@@ -77,59 +163,185 @@ func (h *DefaultHealthChecker) CheckEndpointHealth(
 	expectedStatusCodeRanges []monitoringv1alpha1.StatusCodeRange,
 	endpointsSecret monitoringv1alpha1.EndpointsSecret,
 ) (bool, int, bool, error) {
-	log := log.FromContext(ctx)
+	log := log.FromContext(ctx).WithName("health-checker")
 
-	// Create request inline
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		log.Error(err, "Failed to create request", "endpoint", endpoint)
-		return false, 0, false, fmt.Errorf("%s: %w", ErrFailedToCreateRequest, err)
-	}
+	// Log health check start
+	log.V(1).Info("Starting health check",
+		"endpoint", endpoint,
+		"expected_ranges", expectedStatusCodeRanges,
+	)
 
-	resp, err := h.doRequestWithRetries(req, log)
+	// Perform the health check
+	resp, err := h.performHealthCheck(ctx, endpoint, log)
 	if err != nil {
 		return false, 0, false, err
 	}
-	if resp != nil {
-		defer func() {
-			if err := resp.Body.Close(); err != nil {
-				log.Error(err, "Failed to close response body")
-			}
-		}()
-	}
+	defer h.closeResponseBody(resp, log)
 
-	// Inline status code range check
-	healthy := false
-	for _, r := range expectedStatusCodeRanges {
-		if resp.StatusCode >= r.Min && resp.StatusCode <= r.Max {
-			healthy = true
-			break
-		}
-	}
+	// Determine if the endpoint is healthy
+	healthy := h.isStatusCodeHealthy(resp.StatusCode, expectedStatusCodeRanges)
 
-	// Report to the appropriate endpoint
-	var reportSuccess bool
-	reportURL := endpointsSecret.UnhealthyEndpointKey
-	reportMethod := endpointsSecret.UnhealthyEndpointMethod
-	if healthy {
-		reportURL = endpointsSecret.HealthyEndpointKey
-		reportMethod = endpointsSecret.HealthyEndpointMethod
-	}
-	if reportURL != "" {
-		// Default to GET if method is not specified
-		if reportMethod == "" {
-			reportMethod = "GET"
-		}
-		reportReq, err := http.NewRequestWithContext(ctx, reportMethod, reportURL, nil)
-		if err == nil {
-			reportResp, err := h.doRequestWithRetries(reportReq, log)
-			if err == nil && reportResp != nil && reportResp.StatusCode >= 200 && reportResp.StatusCode < 300 {
-				reportSuccess = true
-			}
-		} else {
-			log.Error(err, "Failed to create report request", "reportURL", reportURL, "method", reportMethod)
-		}
-	}
+	// Log health check result
+	log.Info("Health check completed",
+		"endpoint", endpoint,
+		"status_code", resp.StatusCode,
+		"healthy", healthy,
+		"expected_ranges", expectedStatusCodeRanges,
+	)
+
+	// Report health status
+	reportSuccess := h.reportHealthStatus(ctx, healthy, endpointsSecret, log)
 
 	return healthy, resp.StatusCode, reportSuccess, nil
+}
+
+// performHealthCheck creates and executes the HTTP request for health checking.
+func (h *DefaultHealthChecker) performHealthCheck(
+	ctx context.Context,
+	endpoint string,
+	log logr.Logger,
+) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		log.Error(err, "Health check failed",
+			"endpoint", endpoint,
+			"status_code", 0,
+		)
+		return nil, fmt.Errorf("%s: %w", ErrFailedToCreateRequest, err)
+	}
+
+	// Log request creation
+	log.V(2).Info("HTTP request created",
+		"method", req.Method,
+		"endpoint", req.URL.String(),
+		"user_agent", req.UserAgent(),
+	)
+
+	resp, err := h.doRequestWithRetries(req, log)
+	if err != nil {
+		log.Error(err, "Health check failed",
+			"endpoint", endpoint,
+			"status_code", 0,
+		)
+		return nil, err
+	}
+
+	return resp, nil
+}
+
+// closeResponseBody safely closes the response body and logs any errors.
+func (h *DefaultHealthChecker) closeResponseBody(resp *http.Response, log logr.Logger) {
+	if resp != nil {
+		if err := resp.Body.Close(); err != nil {
+			log.Error(err, "Failed to close response body")
+		}
+	}
+}
+
+// isStatusCodeHealthy checks if the given status code falls within any of the expected ranges.
+func (h *DefaultHealthChecker) isStatusCodeHealthy(
+	statusCode int,
+	expectedStatusCodeRanges []monitoringv1alpha1.StatusCodeRange,
+) bool {
+	for _, r := range expectedStatusCodeRanges {
+		if statusCode >= r.Min && statusCode <= r.Max {
+			return true
+		}
+	}
+	return false
+}
+
+// reportHealthStatus reports the health status to the appropriate endpoint.
+func (h *DefaultHealthChecker) reportHealthStatus(
+	ctx context.Context,
+	healthy bool,
+	endpointsSecret monitoringv1alpha1.EndpointsSecret,
+	log logr.Logger,
+) bool {
+	reportURL, reportMethod := h.getReportEndpoint(healthy, endpointsSecret)
+	if reportURL == "" {
+		log.V(2).Info("No report endpoint configured",
+			"health_status", h.getHealthStatusString(healthy),
+		)
+		return false
+	}
+
+	// Default to GET if method is not specified
+	if reportMethod == "" {
+		reportMethod = "GET"
+	}
+
+	// Log report attempt
+	log.V(1).Info("Attempting to report health status",
+		"health_status", h.getHealthStatusString(healthy),
+		"report_url", reportURL,
+		"report_method", reportMethod,
+	)
+
+	return h.executeReportRequest(ctx, reportURL, reportMethod, healthy, log)
+}
+
+// getReportEndpoint returns the appropriate report URL and method based on health status.
+func (h *DefaultHealthChecker) getReportEndpoint(
+	healthy bool,
+	endpointsSecret monitoringv1alpha1.EndpointsSecret,
+) (string, string) {
+	if healthy {
+		return endpointsSecret.HealthyEndpointKey, endpointsSecret.HealthyEndpointMethod
+	}
+	return endpointsSecret.UnhealthyEndpointKey, endpointsSecret.UnhealthyEndpointMethod
+}
+
+// getHealthStatusString returns a string representation of the health status.
+func (h *DefaultHealthChecker) getHealthStatusString(healthy bool) string {
+	if healthy {
+		return "healthy"
+	}
+	return "unhealthy"
+}
+
+// executeReportRequest performs the actual report request and handles the response.
+func (h *DefaultHealthChecker) executeReportRequest(
+	ctx context.Context,
+	reportURL, reportMethod string,
+	healthy bool,
+	log logr.Logger,
+) bool {
+	reportReq, err := http.NewRequestWithContext(ctx, reportMethod, reportURL, nil)
+	if err != nil {
+		log.Error(err, "Report request failed",
+			"report_url", reportURL,
+			"report_method", reportMethod,
+			"health_status", h.getHealthStatusString(healthy),
+		)
+		return false
+	}
+
+	reportResp, err := h.doRequestWithRetries(reportReq, log)
+	if err != nil {
+		log.Error(err, "Report request failed",
+			"report_url", reportURL,
+			"report_method", reportMethod,
+			"health_status", h.getHealthStatusString(healthy),
+		)
+		return false
+	}
+
+	if reportResp != nil && reportResp.StatusCode >= 200 && reportResp.StatusCode < 300 {
+		log.V(1).Info("Report request successful",
+			"report_url", reportURL,
+			"report_method", reportMethod,
+			"report_status_code", reportResp.StatusCode,
+			"health_status", h.getHealthStatusString(healthy),
+		)
+		return true
+	}
+
+	log.V(0).Info("Report request returned non-success status",
+		"report_url", reportURL,
+		"report_method", reportMethod,
+		"report_status_code", reportResp.StatusCode,
+		"health_status", h.getHealthStatusString(healthy),
+	)
+	return false
 }

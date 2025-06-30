@@ -7,6 +7,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	monitoringv1alpha1 "github.com/siutsin/heartbeats/api/v1alpha1"
+	"github.com/siutsin/heartbeats/internal/logger"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -58,7 +59,7 @@ func (u *StatusUpdater) UpdateStatus(
 	heartbeat.Status.Message = message
 
 	if err := u.Client.Status().Update(ctx, heartbeat); err != nil {
-		log.Error(err, ErrFailedToUpdateStatus)
+		logger.Error(log, ErrFailedToUpdateStatus, err, nil)
 		return err
 	}
 
@@ -81,7 +82,7 @@ func (u *StatusUpdater) UpdateSecretErrorStatus(
 	err error,
 ) error {
 	log := log.FromContext(ctx)
-	log.Error(err, ErrFailedToGetSecret)
+	logger.Error(log, ErrFailedToGetSecret, err, nil)
 	return u.UpdateStatus(
 		ctx,
 		heartbeat,
@@ -107,7 +108,9 @@ func (u *StatusUpdater) UpdateMissingKeyStatus(
 	key string,
 ) error {
 	log := log.FromContext(ctx)
-	log.Error(nil, ErrMissingRequiredKey, "key", key)
+	logger.Error(log, ErrMissingRequiredKey, nil, map[string]interface{}{
+		"key": key,
+	})
 	return u.UpdateStatus(
 		ctx,
 		heartbeat,
@@ -131,7 +134,7 @@ func (u *StatusUpdater) UpdateEmptyEndpointStatus(
 	heartbeat *monitoringv1alpha1.Heartbeat,
 ) error {
 	log := log.FromContext(ctx)
-	log.Error(nil, ErrEndpointNotSpecified)
+	logger.Error(log, ErrEndpointNotSpecified, nil, nil)
 	return u.UpdateStatus(
 		ctx,
 		heartbeat,
@@ -159,7 +162,7 @@ func (u *StatusUpdater) UpdateHealthCheckErrorStatus(
 	err error,
 ) error {
 	log := log.FromContext(ctx)
-	log.Error(err, ErrFailedToCheckEndpoint)
+	logger.Error(log, ErrFailedToCheckEndpoint, err, nil)
 	return u.UpdateStatus(
 		ctx,
 		heartbeat,
@@ -185,7 +188,7 @@ func (u *StatusUpdater) UpdateInvalidRangeStatus(
 	statusCode int,
 ) error {
 	log := log.FromContext(ctx)
-	log.Error(nil, ErrInvalidStatusCodeRange)
+	logger.Error(log, ErrInvalidStatusCodeRange, nil, nil)
 	return u.UpdateStatus(
 		ctx,
 		heartbeat,
@@ -239,7 +242,7 @@ func (u *StatusUpdater) UpdateHealthStatus(
 	}
 
 	if err := u.Client.Status().Update(ctx, heartbeat); err != nil {
-		log.Error(err, ErrFailedToUpdateStatus)
+		logger.Error(log, ErrFailedToUpdateStatus, err, nil)
 		return err
 	}
 

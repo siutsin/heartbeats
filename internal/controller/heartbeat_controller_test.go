@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"github.com/onsi/gomega"
+	"github.com/stretchr/testify/mock"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -31,6 +32,7 @@ import (
 
 	monitoringv1alpha1 "github.com/siutsin/heartbeats/api/v1alpha1"
 	"github.com/siutsin/heartbeats/internal/controller"
+	"github.com/siutsin/heartbeats/test/mocks"
 )
 
 const (
@@ -49,36 +51,6 @@ type testCase struct {
 	expectedMsg    string                                              // Expected status message
 	expectHealthy  bool                                                // Whether the endpoint should be marked as healthy
 	setupMock      func(*monitoringv1alpha1.Heartbeat, *corev1.Secret) // Function to set up test data
-}
-
-// mockHealthChecker is a mock implementation of the HealthChecker interface for testing.
-// It allows tests to control the health check results without making actual HTTP requests.
-type mockHealthChecker struct {
-	statusCode int  // Status code to return from health checks
-	healthy    bool // Whether the endpoint should be considered healthy
-}
-
-// CheckEndpointHealth implements the HealthChecker interface for the mock.
-// It returns the predefined status code and health status without making actual HTTP requests.
-//
-// Parameters:
-//   - ctx: Context for the operation (unused in mock)
-//   - endpoint: Endpoint URL (unused in mock)
-//   - expectedRanges: Expected status code ranges (unused in mock)
-//   - endpointsSecret: Endpoints secret configuration (unused in mock)
-//
-// Returns:
-//   - bool: The predefined healthy status
-//   - int: The predefined status code
-//   - bool: Always returns true for report success
-//   - error: Always returns nil (no errors in mock)
-func (m *mockHealthChecker) CheckEndpointHealth(
-	_ context.Context,
-	_ string,
-	_ []monitoringv1alpha1.StatusCodeRange,
-	_ monitoringv1alpha1.EndpointsSecret,
-) (bool, int, bool, error) {
-	return m.healthy, m.statusCode, true, nil
 }
 
 // TestHeartbeatReconciler runs a comprehensive test suite for the HeartbeatReconciler.
@@ -211,15 +183,17 @@ func TestHeartbeatReconciler(t *testing.T) {
 				WithStatusSubresource(heartbeat).
 				Build()
 
-			// Create reconciler with mock health checker
+			// Create generated mock for HealthChecker
+			mockChecker := &mocks.HealthChecker{}
+			mockChecker.On("CheckEndpointHealth", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+				Return(tt.expectHealthy, tt.statusCode, true, nil)
+
+			// Create reconciler with generated mock
 			reconciler := &controller.HeartbeatReconciler{
-				Client: client,
-				Scheme: scheme,
-				Config: controller.DefaultConfig(),
-				HealthChecker: &mockHealthChecker{
-					statusCode: tt.statusCode,
-					healthy:    tt.expectHealthy,
-				},
+				Client:        client,
+				Scheme:        scheme,
+				Config:        controller.DefaultConfig(),
+				HealthChecker: mockChecker,
 				StatusUpdater: controller.NewStatusUpdater(client),
 			}
 

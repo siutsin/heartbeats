@@ -35,7 +35,9 @@ import (
 
 	monitoringv1alpha1 "github.com/siutsin/heartbeats/api/v1alpha1"
 	"github.com/siutsin/heartbeats/internal/controller"
+
 	// +kubebuilder:scaffold:imports
+	"log/slog"
 )
 
 // These tests use Ginkgo (BDD-style Go testing framework). Refer to
@@ -63,6 +65,14 @@ func TestAPIs(t *testing.T) {
 // It initialises a local Kubernetes cluster, creates the necessary clients,
 // and starts the controller manager for integration testing.
 var _ = ginkgo.BeforeSuite(func() {
+	// Configure slog for tests
+	handler := slog.NewJSONHandler(ginkgo.GinkgoWriter, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	})
+	logger := slog.New(handler)
+	slog.SetDefault(logger)
+
+	// Set up zap as the logr implementation
 	logf.SetLogger(zap.New(zap.WriteTo(ginkgo.GinkgoWriter), zap.UseDevMode(true)))
 
 	ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)

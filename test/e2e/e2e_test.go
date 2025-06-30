@@ -219,7 +219,7 @@ func verifyMetricsAvailability(controllerPodName string) {
 		cmd := exec.Command("kubectl", "logs", controllerPodName, "-n", namespace)
 		output, err := utils.Run(cmd)
 		g.Expect(err).NotTo(gomega.HaveOccurred())
-		g.Expect(output).To(gomega.ContainSubstring("controller-runtime.metrics\tServing metrics server"),
+		g.Expect(output).To(gomega.ContainSubstring("Serving metrics server"),
 			"Metrics server not yet started")
 	}
 	gomega.Eventually(verifyMetricsServerStarted).Should(gomega.Succeed())

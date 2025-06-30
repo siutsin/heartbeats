@@ -15,6 +15,12 @@ tmp/
 
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
+*_cover.out
+*_coverage.out
+
+# Coverage HTML reports
+*_coverage.html
+coverage.html
 
 # Dependency directories (remove the comment below to include it)
 vendor/

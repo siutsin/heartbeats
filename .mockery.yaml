@@ -1,0 +1,7 @@
+# Mockery configuration file
+# This file configures how mock objects are generated
+
+# Global settings
+with-expecter: true
+outpkg: mocks
+output: internal/mocks
