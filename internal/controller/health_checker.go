@@ -176,7 +176,13 @@ func (h *DefaultHealthChecker) CheckEndpointHealth(
 	if err != nil {
 		return false, 0, false, err
 	}
-	defer h.closeResponseBody(resp, log)
+	defer func() {
+		if resp != nil {
+			if err := resp.Body.Close(); err != nil {
+				log.Error(err, "Failed to close response body")
+			}
+		}
+	}()
 
 	// Determine if the endpoint is healthy
 	healthy := h.isStatusCodeHealthy(resp.StatusCode, expectedStatusCodeRanges)
@@ -229,15 +235,6 @@ func (h *DefaultHealthChecker) performHealthCheck(
 	return resp, nil
 }
 
-// closeResponseBody safely closes the response body and logs any errors.
-func (h *DefaultHealthChecker) closeResponseBody(resp *http.Response, log logr.Logger) {
-	if resp != nil {
-		if err := resp.Body.Close(); err != nil {
-			log.Error(err, "Failed to close response body")
-		}
-	}
-}
-
 // isStatusCodeHealthy checks if the given status code falls within any of the expected ranges.
 func (h *DefaultHealthChecker) isStatusCodeHealthy(
 	statusCode int,
@@ -259,9 +256,16 @@ func (h *DefaultHealthChecker) reportHealthStatus(
 	log logr.Logger,
 ) bool {
 	reportURL, reportMethod := h.getReportEndpoint(healthy, endpointsSecret)
+	healthStatus := func() string {
+		if healthy {
+			return "healthy"
+		}
+		return "unhealthy"
+	}()
+
 	if reportURL == "" {
 		log.V(2).Info("No report endpoint configured",
-			"health_status", h.getHealthStatusString(healthy),
+			"health_status", healthStatus,
 		)
 		return false
 	}
@@ -273,7 +277,7 @@ func (h *DefaultHealthChecker) reportHealthStatus(
 
 	// Log report attempt
 	log.V(1).Info("Attempting to report health status",
-		"health_status", h.getHealthStatusString(healthy),
+		"health_status", healthStatus,
 		"report_url", reportURL,
 		"report_method", reportMethod,
 	)
@@ -292,6 +296,29 @@ func (h *DefaultHealthChecker) getReportEndpoint(
 	return endpointsSecret.UnhealthyEndpointKey, endpointsSecret.UnhealthyEndpointMethod
 }
 
+// executeReportRequest performs the actual report request and handles the response.
+func (h *DefaultHealthChecker) executeReportRequest(
+	ctx context.Context,
+	reportURL, reportMethod string,
+	healthy bool,
+	log logr.Logger,
+) bool {
+	healthStatus := h.getHealthStatusString(healthy)
+
+	reportReq, err := h.createReportRequest(ctx, reportURL, reportMethod, healthStatus, log)
+	if err != nil {
+		return false
+	}
+
+	reportResp, err := h.doRequestWithRetries(reportReq, log)
+	if err != nil {
+		h.logReportRequestError(err, reportURL, reportMethod, healthStatus, log)
+		return false
+	}
+
+	return h.handleReportResponse(reportResp, reportURL, reportMethod, healthStatus, log)
+}
+
 // getHealthStatusString returns a string representation of the health status.
 func (h *DefaultHealthChecker) getHealthStatusString(healthy bool) string {
 	if healthy {
@@ -300,39 +327,49 @@ func (h *DefaultHealthChecker) getHealthStatusString(healthy bool) string {
 	return "unhealthy"
 }
 
-// executeReportRequest performs the actual report request and handles the response.
-func (h *DefaultHealthChecker) executeReportRequest(
+// createReportRequest creates the HTTP request for reporting health status.
+func (h *DefaultHealthChecker) createReportRequest(
 	ctx context.Context,
-	reportURL, reportMethod string,
-	healthy bool,
+	reportURL, reportMethod, healthStatus string,
 	log logr.Logger,
-) bool {
+) (*http.Request, error) {
 	reportReq, err := http.NewRequestWithContext(ctx, reportMethod, reportURL, nil)
 	if err != nil {
 		log.Error(err, "Report request failed",
 			"report_url", reportURL,
 			"report_method", reportMethod,
-			"health_status", h.getHealthStatusString(healthy),
+			"health_status", healthStatus,
 		)
-		return false
+		return nil, err
 	}
+	return reportReq, nil
+}
 
-	reportResp, err := h.doRequestWithRetries(reportReq, log)
-	if err != nil {
-		log.Error(err, "Report request failed",
-			"report_url", reportURL,
-			"report_method", reportMethod,
-			"health_status", h.getHealthStatusString(healthy),
-		)
-		return false
-	}
+// logReportRequestError logs errors during report request execution.
+func (h *DefaultHealthChecker) logReportRequestError(
+	err error,
+	reportURL, reportMethod, healthStatus string,
+	log logr.Logger,
+) {
+	log.Error(err, "Report request failed",
+		"report_url", reportURL,
+		"report_method", reportMethod,
+		"health_status", healthStatus,
+	)
+}
 
+// handleReportResponse processes the report response and determines success.
+func (h *DefaultHealthChecker) handleReportResponse(
+	reportResp *http.Response,
+	reportURL, reportMethod, healthStatus string,
+	log logr.Logger,
+) bool {
 	if reportResp != nil && reportResp.StatusCode >= 200 && reportResp.StatusCode < 300 {
 		log.V(1).Info("Report request successful",
 			"report_url", reportURL,
 			"report_method", reportMethod,
 			"report_status_code", reportResp.StatusCode,
-			"health_status", h.getHealthStatusString(healthy),
+			"health_status", healthStatus,
 		)
 		return true
 	}
@@ -341,7 +378,7 @@ func (h *DefaultHealthChecker) executeReportRequest(
 		"report_url", reportURL,
 		"report_method", reportMethod,
 		"report_status_code", reportResp.StatusCode,
-		"health_status", h.getHealthStatusString(healthy),
+		"health_status", healthStatus,
 	)
 	return false
 }
