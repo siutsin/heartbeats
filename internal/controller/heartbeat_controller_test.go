@@ -20,6 +20,7 @@ import (
 	"context"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/onsi/gomega"
 	"github.com/stretchr/testify/mock"
@@ -216,6 +217,77 @@ func TestHeartbeatReconciler(t *testing.T) {
 			g.Expect(heartbeat.Status.Message).To(gomega.Equal(tt.expectedMsg))
 			g.Expect(heartbeat.Status.Healthy).To(gomega.Equal(tt.expectHealthy))
 			g.Expect(heartbeat.Status.LastChecked).NotTo(gomega.BeNil())
+		})
+	}
+}
+
+// TestParseInterval tests the parseInterval function with various valid and invalid interval strings.
+func TestParseInterval(t *testing.T) {
+	tests := []struct {
+		name        string
+		interval    string
+		expectError bool
+		expected    time.Duration
+	}{
+		{
+			name:        "valid seconds",
+			interval:    "30s",
+			expectError: false,
+			expected:    30 * time.Second,
+		},
+		{
+			name:        "valid minutes",
+			interval:    "5m",
+			expectError: false,
+			expected:    5 * time.Minute,
+		},
+		{
+			name:        "valid hours",
+			interval:    "1h",
+			expectError: false,
+			expected:    1 * time.Hour,
+		},
+		{
+			name:        "valid mixed duration",
+			interval:    "1h30m",
+			expectError: false,
+			expected:    1*time.Hour + 30*time.Minute,
+		},
+		{
+			name:        "invalid format - no unit",
+			interval:    "30",
+			expectError: true,
+		},
+		{
+			name:        "invalid format - invalid unit",
+			interval:    "30x",
+			expectError: true,
+		},
+		{
+			name:        "negative duration (accepted by time.ParseDuration)",
+			interval:    "-30s",
+			expectError: false,
+			expected:    -30 * time.Second,
+		},
+		{
+			name:        "empty string",
+			interval:    "",
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g := gomega.NewWithT(t)
+
+			result, err := controller.ParseInterval(tt.interval)
+
+			if tt.expectError {
+				g.Expect(err).To(gomega.HaveOccurred())
+			} else {
+				g.Expect(err).NotTo(gomega.HaveOccurred())
+				g.Expect(result).To(gomega.Equal(tt.expected))
+			}
 		})
 	}
 }
