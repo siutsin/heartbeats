@@ -7,3 +7,5 @@ alwaysApply: true
 
 - Write comments and documentation in British English.
 - Markdown should be checked against markdownlint rules.
+- To test, run `make lint-markdown-fix && make lint && make test && make test-e2e LOCAL=true`
+- Auto fix and run test without asking me to confirm

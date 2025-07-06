@@ -3,6 +3,8 @@ package logger
 import (
 	"context"
 
+	"log/slog"
+
 	"github.com/go-logr/logr"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -53,4 +55,66 @@ func LogEndpointExtractionError(
 		endpointType+"_endpoint_key", key,
 	)
 	return err
+}
+
+// slogLogger implements logr.Logger interface using slog
+// This allows integration of Go's slog with logr consumers (e.g., controller-runtime)
+type slogLogger struct {
+	logger *slog.Logger
+}
+
+func (s *slogLogger) Init(_ logr.RuntimeInfo) {}
+
+func (s *slogLogger) Enabled(level int) bool {
+	return level <= 0 // info and above, debug levels disabled for now
+}
+
+func (s *slogLogger) Info(_ int, msg string, keysAndValues ...interface{}) {
+	attrs := make([]any, 0, len(keysAndValues))
+	for i := 0; i < len(keysAndValues); i += 2 {
+		if i+1 < len(keysAndValues) {
+			attrs = append(attrs, keysAndValues[i], keysAndValues[i+1])
+		} else {
+			attrs = append(attrs, keysAndValues[i])
+		}
+	}
+	s.logger.Info(msg, attrs...)
+}
+
+func (s *slogLogger) Error(err error, msg string, keysAndValues ...interface{}) {
+	attrs := make([]any, 0, len(keysAndValues)+2)
+	attrs = append(attrs, "error", err)
+	for i := 0; i < len(keysAndValues); i += 2 {
+		if i+1 < len(keysAndValues) {
+			attrs = append(attrs, keysAndValues[i], keysAndValues[i+1])
+		} else {
+			attrs = append(attrs, keysAndValues[i])
+		}
+	}
+	s.logger.Error(msg, attrs...)
+}
+
+func (s *slogLogger) WithValues(keysAndValues ...interface{}) logr.LogSink {
+	attrs := make([]any, 0, len(keysAndValues))
+	for i := 0; i < len(keysAndValues); i += 2 {
+		if i+1 < len(keysAndValues) {
+			attrs = append(attrs, keysAndValues[i], keysAndValues[i+1])
+		} else {
+			attrs = append(attrs, keysAndValues[i])
+		}
+	}
+	return &slogLogger{
+		logger: s.logger.With(attrs...),
+	}
+}
+
+func (s *slogLogger) WithName(name string) logr.LogSink {
+	return &slogLogger{
+		logger: s.logger.With("logger", name),
+	}
+}
+
+// NewSlogLogger returns a logr.Logger backed by the provided slog.Logger
+func NewSlogLogger(l *slog.Logger) logr.Logger {
+	return logr.New(&slogLogger{logger: l})
 }
