@@ -13,7 +13,7 @@
   packageRules: [
     {
       matchPackageNames: ['github.com/go-logr/stdr'],
-      abandonmentThresholdDays: null // Never mark as abandoned
+      abandonmentThreshold: null // Never mark as abandoned
     }
   ]
 }
