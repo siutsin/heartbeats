@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -42,6 +43,16 @@ type HeartbeatReconciler struct {
 	Config        Config
 	HealthChecker HealthChecker
 	StatusUpdater *StatusUpdater
+}
+
+// ParseInterval parses the interval string from the heartbeat spec into a time.Duration.
+// The interval string should match the pattern ^([0-9]+(s|m|h))$ (e.g., "30s", "5m", "1h").
+func ParseInterval(interval string) (time.Duration, error) {
+	duration, err := time.ParseDuration(interval)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse interval '%s': %w", interval, err)
+	}
+	return duration, nil
 }
 
 // +kubebuilder:rbac:groups=monitoring.siutsin.com,resources=heartbeats,verbs=get;list;watch;create;update;patch;delete
@@ -68,16 +79,27 @@ func (r *HeartbeatReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// Create heartbeat context for consistent logging
 	heartbeatLog := logger.WithHeartbeat(ctx, "heartbeat-reconciler", heartbeat.Namespace, heartbeat.Name)
 
+	// Parse the interval from the heartbeat spec
+	interval, err := ParseInterval(heartbeat.Spec.Interval)
+	if err != nil {
+		logger.Error(heartbeatLog, "Failed to parse interval", err, map[string]interface{}{
+			"interval": heartbeat.Spec.Interval,
+		})
+		// Fall back to config default on parsing error
+		interval = r.Config.RequeueAfter
+	}
+
 	// Step 2: Process the heartbeat resource
 	if err := r.processHeartbeat(ctx, heartbeat, req, heartbeatLog); err != nil {
-		return r.handleReconcileError(ctx, heartbeat, err)
+		return r.handleReconcileError(ctx, heartbeat, err, interval)
 	}
 
 	completionFields := map[string]interface{}{
-		"requeue_after": r.Config.RequeueAfter,
+		"requeue_after": interval,
+		"interval":      heartbeat.Spec.Interval,
 	}
 	logger.Info(heartbeatLog, "Reconciliation completed successfully", completionFields)
-	return ctrl.Result{RequeueAfter: r.Config.RequeueAfter}, nil
+	return ctrl.Result{RequeueAfter: interval}, nil
 }
 
 // runStep is a generic helper for running a reconciliation step with logging.
@@ -197,15 +219,16 @@ func (r *HeartbeatReconciler) handleReconcileError(
 	ctx context.Context,
 	heartbeat *monitoringv1alpha1.Heartbeat,
 	err error,
+	interval time.Duration,
 ) (ctrl.Result, error) {
 	log := logger.WithHeartbeat(ctx, "heartbeat-reconciler", heartbeat.Namespace, heartbeat.Name)
 
 	logger.Error(log, "Reconciliation error occurred", err, map[string]interface{}{
-		"requeue_after": r.Config.RequeueAfter,
+		"requeue_after": interval,
 	})
 
 	// Status is already updated by the calling method, just return requeue
-	return ctrl.Result{RequeueAfter: r.Config.RequeueAfter}, nil
+	return ctrl.Result{RequeueAfter: interval}, nil
 }
 
 // fetchHeartbeat retrieves the Heartbeat resource from the cluster.
