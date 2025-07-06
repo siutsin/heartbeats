@@ -3,6 +3,7 @@ package logger_test
 import (
 	"context"
 	"errors"
+
 	"testing"
 
 	"github.com/go-logr/logr"

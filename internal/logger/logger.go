@@ -60,13 +60,16 @@ func LogEndpointExtractionError(
 // slogLogger implements logr.Logger interface using slog
 // This allows integration of Go's slog with logr consumers (e.g., controller-runtime)
 type slogLogger struct {
-	logger *slog.Logger
+	logger      *slog.Logger
+	minLogLevel int // minimum enabled log level, e.g., 0 for info, -1 for debug
 }
 
 func (s *slogLogger) Init(_ logr.RuntimeInfo) {}
 
 func (s *slogLogger) Enabled(level int) bool {
-	return level <= 0 // info and above, debug levels disabled for now
+	// Returns true if the log level is enabled.
+	// minLogLevel is configurable; by default, info (0) and above are enabled.
+	return level <= s.minLogLevel
 }
 
 func (s *slogLogger) Info(_ int, msg string, keysAndValues ...interface{}) {
@@ -75,7 +78,8 @@ func (s *slogLogger) Info(_ int, msg string, keysAndValues ...interface{}) {
 		if i+1 < len(keysAndValues) {
 			attrs = append(attrs, keysAndValues[i], keysAndValues[i+1])
 		} else {
-			attrs = append(attrs, keysAndValues[i])
+			// Odd number of elements: add a placeholder value for the last key
+			attrs = append(attrs, keysAndValues[i], "(MISSING)")
 		}
 	}
 	s.logger.Info(msg, attrs...)
@@ -83,12 +87,27 @@ func (s *slogLogger) Info(_ int, msg string, keysAndValues ...interface{}) {
 
 func (s *slogLogger) Error(err error, msg string, keysAndValues ...interface{}) {
 	attrs := make([]any, 0, len(keysAndValues)+2)
-	attrs = append(attrs, "error", err)
+
+	// Check if "error" key already exists in keysAndValues to avoid collision
+	hasErrorKey := false
+	for i := 0; i < len(keysAndValues); i += 2 {
+		if i+1 < len(keysAndValues) && keysAndValues[i] == "error" {
+			hasErrorKey = true
+			break
+		}
+	}
+
+	// Only prepend error if it's not already present
+	if !hasErrorKey {
+		attrs = append(attrs, "error", err)
+	}
+
 	for i := 0; i < len(keysAndValues); i += 2 {
 		if i+1 < len(keysAndValues) {
 			attrs = append(attrs, keysAndValues[i], keysAndValues[i+1])
 		} else {
-			attrs = append(attrs, keysAndValues[i])
+			// Odd number of elements: add a placeholder value for the last key
+			attrs = append(attrs, keysAndValues[i], "(MISSING)")
 		}
 	}
 	s.logger.Error(msg, attrs...)
@@ -100,21 +119,37 @@ func (s *slogLogger) WithValues(keysAndValues ...interface{}) logr.LogSink {
 		if i+1 < len(keysAndValues) {
 			attrs = append(attrs, keysAndValues[i], keysAndValues[i+1])
 		} else {
-			attrs = append(attrs, keysAndValues[i])
+			// Odd number of elements: add a placeholder value for the last key
+			attrs = append(attrs, keysAndValues[i], "(MISSING)")
 		}
 	}
 	return &slogLogger{
-		logger: s.logger.With(attrs...),
+		logger:      s.logger.With(attrs...),
+		minLogLevel: s.minLogLevel,
 	}
 }
 
 func (s *slogLogger) WithName(name string) logr.LogSink {
 	return &slogLogger{
-		logger: s.logger.With("logger", name),
+		logger:      s.logger.With("name", name),
+		minLogLevel: s.minLogLevel,
 	}
 }
 
 // NewSlogLogger returns a logr.Logger backed by the provided slog.Logger
+// minLogLevel follows logr convention: 0=info, -1=debug, etc.
 func NewSlogLogger(l *slog.Logger) logr.Logger {
-	return logr.New(&slogLogger{logger: l})
+	return logr.New(&slogLogger{
+		logger:      l,
+		minLogLevel: 0, // Default to info level and above
+	})
+}
+
+// NewSlogLoggerWithLevel returns a logr.Logger backed by the provided slog.Logger with custom log level
+// minLogLevel follows logr convention: 0=info, -1=debug, etc.
+func NewSlogLoggerWithLevel(l *slog.Logger, minLogLevel int) logr.Logger {
+	return logr.New(&slogLogger{
+		logger:      l,
+		minLogLevel: minLogLevel,
+	})
 }
