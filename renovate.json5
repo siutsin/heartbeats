@@ -10,4 +10,10 @@
   },
   minimumReleaseAge: '3 days',
   rebaseWhen: "behind-base-branch",
+  packageRules: [
+    {
+      matchPackageNames: ['github.com/go-logr/stdr'],
+      abandonmentThresholdDays: null // Never mark as abandoned
+    }
+  ]
 }

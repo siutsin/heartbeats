@@ -28,7 +28,6 @@ import (
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
-	"github.com/go-logr/stdr"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -42,18 +41,9 @@ import (
 
 	monitoringv1alpha1 "github.com/siutsin/heartbeats/api/v1alpha1"
 	"github.com/siutsin/heartbeats/internal/controller"
+	"github.com/siutsin/heartbeats/internal/logger"
 	// +kubebuilder:scaffold:imports
 )
-
-// slogStdLogger implements stdr.StdLogger interface for slog
-type slogStdLogger struct {
-	logger *slog.Logger
-}
-
-func (s *slogStdLogger) Output(_ int, logline string) error {
-	s.logger.Info(logline)
-	return nil
-}
 
 var (
 	scheme   = runtime.NewScheme()
@@ -129,12 +119,11 @@ func main() {
 	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	})
-	logger := slog.New(handler)
-	slog.SetDefault(logger)
+	loggerInstance := slog.New(handler)
+	slog.SetDefault(loggerInstance)
 
-	// Create a slog adapter that implements stdr.StdLogger
-	slogAdapter := &slogStdLogger{logger: logger}
-	logf.SetLogger(stdr.New(slogAdapter))
+	// Use the logger adapter from internal/logger
+	logf.SetLogger(logger.NewSlogLogger(loggerInstance))
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	disableHTTP2 := func(c *tls.Config) {
