@@ -5,4 +5,4 @@ kind: Kustomization
 images:
 - name: controller
   newName: ghcr.io/siutsin/heartbeats
-  newTag: v0.55.0@sha256:a1c5f3a01ffbdea0c19b0549889f1bf78303039136c99936b6ea2ef40ce208ea
+  newTag: v0.56.0@sha256:dfea850c9b2235c5738ba1e4c2d6ed5c5e42cd670a8a9925fb24fe2c7c3fe486
