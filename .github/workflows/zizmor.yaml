@@ -4,9 +4,13 @@ on:
   push:
     branches:
       - master
+    paths:
+      - '.github/workflows/**'
   pull_request:
     branches:
       - "**"
+    paths:
+      - '.github/workflows/**'
 
 jobs:
   zizmor:
