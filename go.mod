@@ -2,8 +2,6 @@ module github.com/siutsin/heartbeats
 
 go 1.25.0
 
-godebug default=go1.24
-
 require (
 	github.com/go-logr/logr v1.4.3
 	github.com/goccy/go-yaml v1.19.1
