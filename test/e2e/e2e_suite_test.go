@@ -108,7 +108,7 @@ func deployOperator() {
 
 	// Deploy the controller-manager
 	ginkgo.By("deploying the controller-manager")
-	cmd = exec.Command("make", "deploy", fmt.Sprintf("IMG=%s", projectImage))
+	cmd = exec.Command("make", "deploy-test", fmt.Sprintf("IMG=%s", projectImage))
 	_, err = utils.Run(cmd)
 	gomega.ExpectWithOffset(1, err).NotTo(gomega.HaveOccurred(), "Failed to deploy the controller-manager")
 

@@ -244,7 +244,7 @@ func createMetricsTestPod() {
 					"name": "curl",
 					"image": "curlimages/curl:latest",
 					"command": ["/bin/sh", "-c"],
-					"args": ["curl -v -k -H \"Authorization: Bearer $TOKEN\" https://%s.%s.svc.cluster.local:8443/metrics"],
+					"args": ["curl -v -k -H \"Authorization: Bearer $TOKEN\" https://%s:8443/metrics"],
 					"env": [{
 						"name": "TOKEN",
 						"value": "%s"
@@ -263,7 +263,7 @@ func createMetricsTestPod() {
 				}],
 				"serviceAccount": "%s"
 			}
-		}`, metricsServiceName, namespace, token, serviceAccountName))
+		}`, metricsServiceName, token, serviceAccountName))
 	_, err = utils.Run(cmd)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to create curl-metrics pod")
 

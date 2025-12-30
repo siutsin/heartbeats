@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	ginkgo "github.com/onsi/ginkgo/v2" //nolint:revive
@@ -280,6 +281,66 @@ func LoadImageToKindClusterWithName(name string) error {
 	if v, ok := os.LookupEnv("KIND_CLUSTER"); ok {
 		cluster = v
 	}
+
+	// When using podman, export image to tar and load into kind
+	if provider, ok := os.LookupEnv("KIND_EXPERIMENTAL_PROVIDER"); ok && provider == "podman" {
+		tmpFile, err := os.CreateTemp("", "kind-image-*.tar")
+		if err != nil {
+			return err
+		}
+
+		defer func() {
+			if err := os.Remove(tmpFile.Name()); err != nil {
+				warnError(err)
+			}
+		}()
+		if err := tmpFile.Close(); err != nil {
+			return err
+		}
+
+		// Ensure we have both localhost/ prefixed and non-prefixed tags
+		podmanImage := name
+		if !strings.HasPrefix(name, "localhost/") {
+			podmanImage = "localhost/" + name
+		}
+
+		// Tag image without localhost/ prefix
+		if _, err := Run(exec.Command("podman", "tag", podmanImage, name)); err != nil {
+			return err
+		}
+
+		// Save the non-prefixed image to tar
+		if _, err := Run(exec.Command("podman", "save", "-o", tmpFile.Name(), name)); err != nil {
+			return err
+		}
+
+		// Copy tar into kind container
+		destPath := "/tmp/" + filepath.Base(tmpFile.Name())
+		containerName := cluster + "-control-plane"
+		if _, err := Run(exec.Command("podman", "cp", tmpFile.Name(), containerName+":"+destPath)); err != nil {
+			return err
+		}
+
+		// Import image into containerd using ctr
+		_, err = Run(exec.Command("podman", "exec", containerName, "ctr", "-n", "k8s.io", "images", "import", destPath))
+		if err != nil {
+			return err
+		}
+
+		// Tag the image to remove localhost/ prefix (containerd imports with localhost/ but k8s expects docker.io/library/)
+		localImage := "localhost/" + name
+		dockerImage := "docker.io/library/" + name
+		cmd := exec.Command("podman", "exec", containerName, "ctr", "-n", "k8s.io", "images", "tag", localImage, dockerImage)
+		if _, err := Run(cmd); err != nil {
+			return err
+		}
+
+		// Clean up the tar file inside the container
+		_, _ = Run(exec.Command("podman", "exec", containerName, "rm", destPath))
+		return nil
+	}
+
+	// For docker, use direct image loading
 	kindOptions := []string{"load", "docker-image", name, "--name", cluster}
 	cmd := exec.Command("kind", kindOptions...)
 	_, err := Run(cmd)

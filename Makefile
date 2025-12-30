@@ -9,10 +9,9 @@ GOBIN=$(shell go env GOBIN)
 endif
 
 # CONTAINER_TOOL defines the container tool to be used for building images.
-# Be aware that the target commands are only tested with Docker which is
-# scaffolded by default. However, you might want to replace it to use other
-# tools. (i.e. podman)
-CONTAINER_TOOL ?= docker
+# Auto-detects docker or podman, preferring docker if both are available.
+# Can be overridden by setting CONTAINER_TOOL environment variable.
+CONTAINER_TOOL ?= $(shell command -v docker >/dev/null 2>&1 && echo docker || (command -v podman >/dev/null 2>&1 && echo podman || echo docker))
 
 # Setting SHELL to bash allows bash commands to be executed by recipes.
 # Options are set to exit when a recipe line exits non-zero or a piped command fails.
@@ -86,7 +85,11 @@ define run-e2e-tests
 		kind create cluster --name kind --config test/e2e/kind-config.yaml; \
 	fi
 	@echo "$(2)..."
-	CGO_ENABLED=$(1) go test $(3) ./test/e2e/ -v -ginkgo.v
+	@if [ "$(CONTAINER_TOOL)" = "podman" ]; then \
+		KIND_EXPERIMENTAL_PROVIDER=podman CGO_ENABLED=$(1) go test $(3) ./test/e2e/ -v -ginkgo.v; \
+	else \
+		CGO_ENABLED=$(1) go test $(3) ./test/e2e/ -v -ginkgo.v; \
+	fi
 	@echo "Reverting kustomization file changes..."
 	@git checkout config/manager/kustomization.yaml
 	@if [ "$(LOCAL)" = "true" ]; then \
@@ -199,6 +202,11 @@ uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified 
 deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
 	$(KUSTOMIZE) build config/default | $(KUBECTL) apply -f -
+
+.PHONY: deploy-test
+deploy-test: manifests kustomize ## Deploy controller for testing (using local image) to the K8s cluster.
+	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
+	$(KUSTOMIZE) build config/e2e | $(KUBECTL) apply -f -
 
 .PHONY: undeploy
 undeploy: kustomize ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
