@@ -47,7 +47,7 @@ This document provides directives for LLM agents working on this project.
   - Use informers and work queues efficiently.
   - Implement proper RBAC and health checks.
   - Use structured logging with appropriate verbosity.
-- **Performance**: Minimize API load (watch predicates), use caching/indexing, and implement rate limiting.
+- **Performance**: Minimise API load (watch predicates), use caching/indexing, and implement rate limiting.
 - **Production Readiness**: Handle graceful shutdown/leader election, expose Prometheus metrics, and plan for upgrades.
 
 ### Documentation Requirements
@@ -74,15 +74,15 @@ This document provides directives for LLM agents working on this project.
 
 ### Integration & E2E Testing
 
-- **Ephemeral Stack**: Launch an ephemeral stack to verify the application behaves correctly in a real-like environment.
+- **Ephemeral Stack**: Launch an ephemeral stack to verify the application behaves correctly in a production-like environment.
 
 ## Tool Selection
 
 Use the appropriate tool for each file type:
 
-| File Type | Tool | Purpose |
-|Dist|---|---|
-| YAML | `yq` | Parsing and modification |
-| Markdown | `markdownlint` | Linting and validation |
-| Go | `go` | Language toolchain |
-| Makefile | `make` | Build and test automation |
+| File Type | Tool           | Purpose                   |
+| --------- | -------------- | ------------------------- |
+| YAML      | `yq`           | Parsing and modification  |
+| Markdown  | `markdownlint` | Linting and validation    |
+| Go        | `go`           | Language toolchain        |
+| Makefile  | `make`         | Build and test automation |
