@@ -18,6 +18,7 @@ package controller_test
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"testing"
 	"time"
@@ -219,6 +220,162 @@ func TestHeartbeatReconciler(t *testing.T) {
 			g.Expect(heartbeat.Status.LastChecked).NotTo(gomega.BeNil())
 		})
 	}
+}
+
+// TestConcurrentReconciliationNotBlocked verifies that a failing health check
+// does not block other Heartbeat resources from being reconciled.
+// This test simulates multiple Heartbeats where one has a failing endpoint that takes
+// time to fail (simulating network timeout/retries), and verifies that the healthy
+// Heartbeat completes its reconciliation without waiting for the failing one.
+func TestConcurrentReconciliationNotBlocked(t *testing.T) {
+	g := gomega.NewWithT(t)
+
+	scheme := runtime.NewScheme()
+	_ = monitoringv1alpha1.AddToScheme(scheme)
+	_ = corev1.AddToScheme(scheme)
+
+	// Create multiple heartbeats and secrets
+	failingHeartbeat := &monitoringv1alpha1.Heartbeat{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "failing-heartbeat",
+			Namespace: testNamespace,
+		},
+		Spec: monitoringv1alpha1.HeartbeatSpec{
+			EndpointsSecret: monitoringv1alpha1.EndpointsSecret{
+				Name:                 "failing-secret",
+				TargetEndpointKey:    "targetEndpoint",
+				HealthyEndpointKey:   "healthyEndpoint",
+				UnhealthyEndpointKey: "unhealthyEndpoint",
+			},
+			ExpectedStatusCodeRanges: []monitoringv1alpha1.StatusCodeRange{{Min: 200, Max: 299}},
+			Interval:                 interval,
+		},
+	}
+	failingSecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "failing-secret",
+			Namespace: testNamespace,
+		},
+		Data: map[string][]byte{
+			"targetEndpoint":    []byte("https://unreachable.example.com"),
+			"healthyEndpoint":   []byte("https://healthy.example.com"),
+			"unhealthyEndpoint": []byte("https://unhealthy.example.com"),
+		},
+	}
+
+	healthyHeartbeat := &monitoringv1alpha1.Heartbeat{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "healthy-heartbeat",
+			Namespace: testNamespace,
+		},
+		Spec: monitoringv1alpha1.HeartbeatSpec{
+			EndpointsSecret: monitoringv1alpha1.EndpointsSecret{
+				Name:                 "healthy-secret",
+				TargetEndpointKey:    "targetEndpoint",
+				HealthyEndpointKey:   "healthyEndpoint",
+				UnhealthyEndpointKey: "unhealthyEndpoint",
+			},
+			ExpectedStatusCodeRanges: []monitoringv1alpha1.StatusCodeRange{{Min: 200, Max: 299}},
+			Interval:                 interval,
+		},
+	}
+	healthySecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "healthy-secret",
+			Namespace: testNamespace,
+		},
+		Data: map[string][]byte{
+			"targetEndpoint":    []byte("https://healthy.example.com"),
+			"healthyEndpoint":   []byte("https://healthy.example.com"),
+			"unhealthyEndpoint": []byte("https://unhealthy.example.com"),
+		},
+	}
+
+	// Create fake client with both heartbeats
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(failingHeartbeat, failingSecret, healthyHeartbeat, healthySecret).
+		WithStatusSubresource(failingHeartbeat, healthyHeartbeat).
+		Build()
+
+	// Simulate a failing endpoint that takes time to fail (like network timeout with retries)
+	failureDelay := 500 * time.Millisecond
+	networkErr := fmt.Errorf("dial tcp: lookup unreachable.example.com: no such host")
+
+	mockChecker := &mocks.HealthChecker{}
+	// Failing endpoint: delays then returns error (simulating timeout/retry behaviour)
+	mockChecker.On("CheckEndpointHealth", mock.Anything, "https://unreachable.example.com", mock.Anything, mock.Anything).
+		Run(func(_ mock.Arguments) {
+			time.Sleep(failureDelay)
+		}).
+		Return(false, 0, false, networkErr)
+	// Healthy endpoint: returns immediately
+	mockChecker.On("CheckEndpointHealth", mock.Anything, "https://healthy.example.com", mock.Anything, mock.Anything).
+		Return(true, http.StatusOK, true, nil)
+
+	// Create reconciler
+	reconciler := &controller.HeartbeatReconciler{
+		Client:        fakeClient,
+		Scheme:        scheme,
+		Config:        controller.DefaultConfig(),
+		HealthChecker: mockChecker,
+		StatusUpdater: controller.NewStatusUpdater(fakeClient),
+	}
+
+	// Track completion times
+	var failingCompleted, healthyCompleted time.Time
+	startTime := time.Now()
+
+	// Run reconciliations concurrently (simulating what the controller does with MaxConcurrentReconciles > 1)
+	done := make(chan struct{})
+	go func() {
+		_, _ = reconciler.Reconcile(context.Background(), ctrl.Request{
+			NamespacedName: types.NamespacedName{Name: "failing-heartbeat", Namespace: testNamespace},
+		})
+		failingCompleted = time.Now()
+		done <- struct{}{}
+	}()
+
+	go func() {
+		_, _ = reconciler.Reconcile(context.Background(), ctrl.Request{
+			NamespacedName: types.NamespacedName{Name: "healthy-heartbeat", Namespace: testNamespace},
+		})
+		healthyCompleted = time.Now()
+		done <- struct{}{}
+	}()
+
+	// Wait for both to complete
+	<-done
+	<-done
+
+	// Verify healthy heartbeat completed significantly before failing heartbeat
+	healthyDuration := healthyCompleted.Sub(startTime)
+	failingDuration := failingCompleted.Sub(startTime)
+
+	// Healthy should complete much quicker than the failure delay
+	g.Expect(healthyDuration).To(gomega.BeNumerically("<", failureDelay),
+		"healthy heartbeat should complete before failing endpoint times out")
+
+	// Failing should take at least the delay time
+	g.Expect(failingDuration).To(gomega.BeNumerically(">=", failureDelay),
+		"failing heartbeat should take at least the failure delay time")
+
+	// Verify healthy heartbeat was updated successfully
+	err := fakeClient.Get(context.Background(), types.NamespacedName{
+		Name: "healthy-heartbeat", Namespace: testNamespace,
+	}, healthyHeartbeat)
+	g.Expect(err).NotTo(gomega.HaveOccurred())
+	g.Expect(healthyHeartbeat.Status.Healthy).To(gomega.BeTrue(),
+		"healthy heartbeat should be marked as healthy")
+	g.Expect(healthyHeartbeat.Status.Message).To(gomega.Equal(controller.ErrEndpointHealthy))
+
+	// Verify failing heartbeat was updated with error status
+	err = fakeClient.Get(context.Background(), types.NamespacedName{
+		Name: "failing-heartbeat", Namespace: testNamespace,
+	}, failingHeartbeat)
+	g.Expect(err).NotTo(gomega.HaveOccurred())
+	g.Expect(failingHeartbeat.Status.Healthy).To(gomega.BeFalse(),
+		"failing heartbeat should be marked as unhealthy")
 }
 
 // TestParseInterval tests the parseInterval function with various valid and invalid interval strings.

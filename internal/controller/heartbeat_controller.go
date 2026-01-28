@@ -25,6 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/go-logr/logr"
@@ -716,7 +717,11 @@ func (r *HeartbeatReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	}
 	r.HealthChecker = NewHealthChecker(r.Config)
 	r.StatusUpdater = NewStatusUpdater(r.Client)
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&monitoringv1alpha1.Heartbeat{}).
+		WithOptions(controller.Options{
+			MaxConcurrentReconciles: MaxConcurrentReconciles,
+		}).
 		Complete(r)
 }
