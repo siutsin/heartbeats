@@ -2,6 +2,13 @@ package controller
 
 import "time"
 
+const (
+	// MaxConcurrentReconciles is the number of concurrent reconciliations.
+	// This allows multiple Heartbeat resources to be processed in parallel,
+	// preventing a single failing endpoint from blocking others.
+	MaxConcurrentReconciles = 10
+)
+
 // Config holds the controller configuration parameters.
 // It defines timeouts, retry settings, and requeue intervals for the heartbeat controller.
 type Config struct {
