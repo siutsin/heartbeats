@@ -99,9 +99,6 @@ var _ = ginkgo.BeforeSuite(func() {
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	gomega.Expect(k8sClient).NotTo(gomega.BeNil())
 
-	// Initialize the global K8sClient
-	controller.K8sClient = k8sClient
-
 	k8sManager, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme: scheme.Scheme,
 		Metrics: metricsserver.Options{
