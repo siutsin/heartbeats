@@ -118,10 +118,12 @@ lint: ## Run golangci-lint linter
 
 .PHONY: lint-fix
 lint-fix: ## Run golangci-lint linter and perform fixes
+	@command -v $(GOLANGCI_LINT) >/dev/null 2>&1 || { echo "ERROR: golangci-lint not found on PATH"; exit 1; }
 	$(GOLANGCI_LINT) run --fix
 
 .PHONY: lint-config
 lint-config: ## Verify golangci-lint linter configuration
+	@command -v $(GOLANGCI_LINT) >/dev/null 2>&1 || { echo "ERROR: golangci-lint not found on PATH"; exit 1; }
 	$(GOLANGCI_LINT) config verify
 
 # Install markdownlint
