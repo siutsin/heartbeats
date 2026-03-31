@@ -113,6 +113,7 @@ test-e2e-ci: manifests generate fmt vet docker-build ## Run e2e tests with race 
 
 .PHONY: lint
 lint: ## Run golangci-lint linter
+	@command -v $(GOLANGCI_LINT) >/dev/null 2>&1 || { echo "ERROR: golangci-lint not found on PATH"; exit 1; }
 	$(GOLANGCI_LINT) run
 
 .PHONY: lint-fix
