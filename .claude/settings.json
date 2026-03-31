@@ -1,12 +1,16 @@
 {
   "hooks": {
-    "SessionStart": [
+    "PostToolUse": [
       {
-        "matcher": "startup",
+        "matcher": "Edit|Write",
         "hooks": [
           {
             "type": "command",
-            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/append_agentsmd_context.sh"
+            "command": ".claude/hooks/go_fmt_lint.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/markdown_lint.sh"
           }
         ]
       }
