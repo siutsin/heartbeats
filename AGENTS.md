@@ -4,29 +4,11 @@ This document provides directives for LLM agents working on this project.
 
 ## Core Principles
 
-### Language and Format
-
-- **British English Only**: Write all comments, documentation, and commit messages in British English (e.g., "colour", "behaviour"). Format dates as ISO 8601 (YYYY-MM-DD).
-- **No Emojis**: Never use emojis in code, comments, documentation, or commit messages. Keep communication professional.
-
 ### Error Handling Policy
 
 - **Fix, Never Suppress**: Always fix the root cause of warnings and errors. Never suppress or hide them (e.g., no output filtering or disabling lint rules).
 
-### Automation Behaviour
-
-- **Auto-Fix**: Automatically apply formatting fixes and run tests without asking.
-- **When to Ask**: Only ask for confirmation for significant refactoring, behaviour changes, or architectural decisions.
-
-### Project Conventions
-
-- **Consistency**: Follow established patterns and match the style of surrounding code.
-
 ## Development Standards
-
-### Code Standards
-
-- **Editor Configuration**: **CRITICAL**: Always follow `.editorconfig` settings.
 
 ### Go Best Practices
 
@@ -53,10 +35,6 @@ This document provides directives for LLM agents working on this project.
 ### Documentation Requirements
 
 - Add docstrings to all new functions/classes and update them when signatures change.
-
-### Markdown Guidelines
-
-- Follow strict heading hierarchy (H1 → H2 → H3) and check against `markdownlint`.
 
 ## Testing & Verification
 
