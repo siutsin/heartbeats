@@ -45,6 +45,7 @@ jobs:
     needs: check-files
     if: |
       always() &&
+      github.actor != 'dependabot[bot]' &&
       ((github.event_name == 'pull_request' && needs.check-files.outputs.should-review == 'true') ||
       (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
       (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
