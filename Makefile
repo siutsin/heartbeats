@@ -185,13 +185,21 @@ docker-buildx: ## Build and push docker image for the manager for cross-platform
 # Define ignore-not-found with a default value
 IGNORE_NOT_FOUND ?= false
 
+define render-versioned-manifest
+	image_no_digest="$${IMG%%@*}"; \
+	last_segment="$${image_no_digest##*/}"; \
+	case "$$last_segment" in \
+		*:* ) version="$${last_segment##*:}" ;; \
+		* ) version="latest" ;; \
+	esac; \
+	$(KUSTOMIZE) build $(1) | sed "s|app.kubernetes.io/version: __APP_VERSION__|app.kubernetes.io/version: $$version|g"
+endef
+
 .PHONY: build-installer
 build-installer: manifests generate kustomize ## Generate a consolidated YAML with CRDs and deployment.
 	mkdir -p dist
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
-	@image_no_digest="$${IMG%%@*}"; \
-	version="$${image_no_digest##*:}"; \
-	$(KUSTOMIZE) build config/default | sed "s|app.kubernetes.io/version: latest|app.kubernetes.io/version: $$version|g" > dist/install.yaml
+	@$(call render-versioned-manifest,config/default) > dist/install.yaml
 
 ##@ Deployment
 
@@ -206,16 +214,12 @@ uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified 
 .PHONY: deploy
 deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
-	@image_no_digest="$${IMG%%@*}"; \
-	version="$${image_no_digest##*:}"; \
-	$(KUSTOMIZE) build config/default | sed "s|app.kubernetes.io/version: latest|app.kubernetes.io/version: $$version|g" | $(KUBECTL) apply -f -
+	@$(call render-versioned-manifest,config/default) | $(KUBECTL) apply -f -
 
 .PHONY: deploy-test
 deploy-test: manifests kustomize ## Deploy controller for testing (using local image) to the K8s cluster.
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
-	@image_no_digest="$${IMG%%@*}"; \
-	version="$${image_no_digest##*:}"; \
-	$(KUSTOMIZE) build config/e2e | sed "s|app.kubernetes.io/version: latest|app.kubernetes.io/version: $$version|g" | $(KUBECTL) apply -f -
+	@$(call render-versioned-manifest,config/e2e) | $(KUBECTL) apply -f -
 
 .PHONY: undeploy
 undeploy: kustomize ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
