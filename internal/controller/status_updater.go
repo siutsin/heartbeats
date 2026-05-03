@@ -3,12 +3,12 @@ package controller
 import (
 	"context"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	monitoringv1alpha1 "github.com/siutsin/heartbeats/api/v1alpha1"
 	"github.com/siutsin/heartbeats/internal/logger"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // StatusUpdater handles updating the status of Heartbeat resources.
@@ -108,7 +108,7 @@ func (u *StatusUpdater) UpdateMissingKeyStatus(
 	key string,
 ) error {
 	log := log.FromContext(ctx)
-	logger.Error(log, ErrMissingRequiredKey, nil, map[string]interface{}{
+	logger.Error(log, ErrMissingRequiredKey, nil, map[string]any{
 		"key": key,
 	})
 	return u.UpdateStatus(

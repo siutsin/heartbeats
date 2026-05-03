@@ -26,6 +26,7 @@ import (
 
 	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
+
 	"github.com/siutsin/heartbeats/test/utils"
 )
 
@@ -73,8 +74,8 @@ func setupKindCluster() {
 	_, err := utils.Run(cmd)
 	if err != nil {
 		// If the cluster doesn't exist, that's fine
-		if _, err := fmt.Fprintf(ginkgo.GinkgoWriter, "No existing cluster to delete\n"); err != nil {
-			ginkgo.Fail(fmt.Sprintf("Failed to write to GinkgoWriter: %v", err))
+		if _, writeErr := fmt.Fprintf(ginkgo.GinkgoWriter, "No existing cluster to delete\n"); writeErr != nil {
+			ginkgo.Fail(fmt.Sprintf("Failed to write to GinkgoWriter: %v", writeErr))
 		}
 	}
 

@@ -72,7 +72,7 @@ func ParseFlags() {
 	flag.Parse()
 }
 
-// nolint:gocyclo
+//nolint:gocyclo // main wires controller-runtime options and flag setup in one place.
 func main() {
 	var metricsAddr string
 	var metricsCertPath, metricsCertName, metricsCertKey string

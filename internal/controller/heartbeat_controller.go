@@ -21,6 +21,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/go-logr/logr"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -28,10 +30,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	"github.com/go-logr/logr"
 	monitoringv1alpha1 "github.com/siutsin/heartbeats/api/v1alpha1"
 	"github.com/siutsin/heartbeats/internal/logger"
-	corev1 "k8s.io/api/core/v1"
 )
 
 const (
@@ -85,7 +85,7 @@ func (r *HeartbeatReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// Parse the interval from the heartbeat spec
 	interval, err := ParseInterval(heartbeat.Spec.Interval)
 	if err != nil {
-		logger.Error(heartbeatLog, "Failed to parse interval", err, map[string]interface{}{
+		logger.Error(heartbeatLog, "Failed to parse interval", err, map[string]any{
 			"interval": heartbeat.Spec.Interval,
 		})
 		// Fall back to config default on parsing error
@@ -97,7 +97,7 @@ func (r *HeartbeatReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return r.handleReconcileError(ctx, heartbeat, processErr, interval)
 	}
 
-	completionFields := map[string]interface{}{
+	completionFields := map[string]any{
 		"requeue_after": interval,
 		"interval":      heartbeat.Spec.Interval,
 	}
@@ -111,12 +111,12 @@ func runStep[T any](
 	name string,
 	f func() (T, error),
 ) (T, error) {
-	logger.Info(log, "Starting step", map[string]interface{}{"step": name})
+	logger.Info(log, "Starting step", map[string]any{"step": name})
 	out, err := f()
 	if err != nil {
-		logger.Error(log, "Step failed", err, map[string]interface{}{"step": name})
+		logger.Error(log, "Step failed", err, map[string]any{"step": name})
 	} else {
-		logger.Info(log, "Step completed", map[string]interface{}{"step": name})
+		logger.Info(log, "Step completed", map[string]any{"step": name})
 	}
 	return out, err
 }
@@ -128,7 +128,7 @@ func (r *HeartbeatReconciler) processHeartbeat(
 	req ctrl.Request,
 	heartbeatLog logr.Logger,
 ) error {
-	logger.Info(heartbeatLog, "Resource fetched successfully", map[string]interface{}{
+	logger.Info(heartbeatLog, "Resource fetched successfully", map[string]any{
 		"target_endpoint_key":    heartbeat.Spec.EndpointsSecret.TargetEndpointKey,
 		"healthy_endpoint_key":   heartbeat.Spec.EndpointsSecret.HealthyEndpointKey,
 		"unhealthy_endpoint_key": heartbeat.Spec.EndpointsSecret.UnhealthyEndpointKey,
@@ -185,7 +185,7 @@ func (r *HeartbeatReconciler) processHeartbeat(
 				logger.Error(heartbeatLog, errMsgFailedToFetchResource, extractErr, nil)
 				return monitoringv1alpha1.EndpointsSecret{}, extractErr
 			}
-			reportFields := map[string]interface{}{
+			reportFields := map[string]any{
 				"healthy_endpoint":   endpoints.HealthyEndpointKey,
 				"unhealthy_endpoint": endpoints.UnhealthyEndpointKey,
 			}
@@ -200,7 +200,7 @@ func (r *HeartbeatReconciler) processHeartbeat(
 	// Step 5: Perform health check and report status
 	_, err = runStep(heartbeatLog, "healthCheckAndReport", func() (struct{}, error) {
 		if checkErr := r.performHealthCheckAndReport(ctx, heartbeat, targetEndpoint, reportEndpointsSecret); checkErr != nil {
-			healthCheckFields := map[string]interface{}{
+			healthCheckFields := map[string]any{
 				"endpoint": targetEndpoint,
 			}
 			logger.Error(
@@ -226,7 +226,7 @@ func (r *HeartbeatReconciler) handleReconcileError(
 ) (ctrl.Result, error) {
 	l := logger.WithHeartbeat(ctx, logNameHeartbeatReconciler, heartbeat.Namespace, heartbeat.Name)
 
-	logger.Error(l, "Reconciliation error occurred", err, map[string]interface{}{
+	logger.Error(l, "Reconciliation error occurred", err, map[string]any{
 		"requeue_after": interval,
 	})
 

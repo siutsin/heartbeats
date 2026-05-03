@@ -26,7 +26,7 @@ func WithHeartbeat(ctx context.Context, component string, namespace, name string
 }
 
 // Info logs an informational message with optional additional fields.
-func Info(log logr.Logger, message string, additionalFields map[string]interface{}) {
+func Info(log logr.Logger, message string, additionalFields map[string]any) {
 	if additionalFields != nil {
 		log.V(1).Info(message, additionalFields)
 	} else {
@@ -35,7 +35,7 @@ func Info(log logr.Logger, message string, additionalFields map[string]interface
 }
 
 // Error logs an error message with optional additional fields.
-func Error(log logr.Logger, message string, err error, additionalFields map[string]interface{}) {
+func Error(log logr.Logger, message string, err error, additionalFields map[string]any) {
 	if additionalFields != nil {
 		log.Error(err, message, additionalFields)
 	} else {
@@ -72,7 +72,7 @@ func (s *slogLogger) Enabled(level int) bool {
 	return level <= s.minLogLevel
 }
 
-func (s *slogLogger) Info(_ int, msg string, keysAndValues ...interface{}) {
+func (s *slogLogger) Info(_ int, msg string, keysAndValues ...any) {
 	attrs := make([]any, 0, len(keysAndValues))
 	for i := 0; i < len(keysAndValues); i += 2 {
 		if i+1 < len(keysAndValues) {
@@ -85,7 +85,7 @@ func (s *slogLogger) Info(_ int, msg string, keysAndValues ...interface{}) {
 	s.logger.Info(msg, attrs...)
 }
 
-func (s *slogLogger) Error(err error, msg string, keysAndValues ...interface{}) {
+func (s *slogLogger) Error(err error, msg string, keysAndValues ...any) {
 	attrs := make([]any, 0, len(keysAndValues)+2)
 
 	// Check if "error" key already exists in keysAndValues to avoid collision
@@ -113,7 +113,7 @@ func (s *slogLogger) Error(err error, msg string, keysAndValues ...interface{}) 
 	s.logger.Error(msg, attrs...)
 }
 
-func (s *slogLogger) WithValues(keysAndValues ...interface{}) logr.LogSink {
+func (s *slogLogger) WithValues(keysAndValues ...any) logr.LogSink {
 	attrs := make([]any, 0, len(keysAndValues))
 	for i := 0; i < len(keysAndValues); i += 2 {
 		if i+1 < len(keysAndValues) {

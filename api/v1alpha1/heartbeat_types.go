@@ -24,7 +24,7 @@ import (
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
+// NOTE: json tags are required. Any new fields you add must have json tags for the fields to be serialised.
 
 // EndpointSecretRef defines a reference to a Kubernetes secret containing endpoint information
 type EndpointSecretRef struct {

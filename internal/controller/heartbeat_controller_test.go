@@ -59,9 +59,10 @@ type testCase struct {
 // It uses table-driven tests to verify various scenarios including healthy endpoints,
 // unhealthy endpoints, invalid configurations, and error conditions.
 func TestHeartbeatReconciler(t *testing.T) {
+	g := gomega.NewWithT(t)
 	scheme := runtime.NewScheme()
-	_ = monitoringv1alpha1.AddToScheme(scheme)
-	_ = corev1.AddToScheme(scheme)
+	g.Expect(monitoringv1alpha1.AddToScheme(scheme)).To(gomega.Succeed())
+	g.Expect(corev1.AddToScheme(scheme)).To(gomega.Succeed())
 
 	tests := []testCase{
 		{
@@ -231,8 +232,8 @@ func TestConcurrentReconciliationNotBlocked(t *testing.T) {
 	g := gomega.NewWithT(t)
 
 	scheme := runtime.NewScheme()
-	_ = monitoringv1alpha1.AddToScheme(scheme)
-	_ = corev1.AddToScheme(scheme)
+	g.Expect(monitoringv1alpha1.AddToScheme(scheme)).To(gomega.Succeed())
+	g.Expect(corev1.AddToScheme(scheme)).To(gomega.Succeed())
 
 	// Create multiple heartbeats and secrets
 	failingHeartbeat := &monitoringv1alpha1.Heartbeat{
@@ -327,26 +328,26 @@ func TestConcurrentReconciliationNotBlocked(t *testing.T) {
 	startTime := time.Now()
 
 	// Run reconciliations concurrently (simulating what the controller does with MaxConcurrentReconciles > 1)
-	done := make(chan struct{})
+	errCh := make(chan error, 2)
 	go func() {
-		_, _ = reconciler.Reconcile(context.Background(), ctrl.Request{
+		_, err := reconciler.Reconcile(context.Background(), ctrl.Request{
 			NamespacedName: types.NamespacedName{Name: "failing-heartbeat", Namespace: testNamespace},
 		})
 		failingCompleted = time.Now()
-		done <- struct{}{}
+		errCh <- err
 	}()
 
 	go func() {
-		_, _ = reconciler.Reconcile(context.Background(), ctrl.Request{
+		_, err := reconciler.Reconcile(context.Background(), ctrl.Request{
 			NamespacedName: types.NamespacedName{Name: "healthy-heartbeat", Namespace: testNamespace},
 		})
 		healthyCompleted = time.Now()
-		done <- struct{}{}
+		errCh <- err
 	}()
 
 	// Wait for both to complete
-	<-done
-	<-done
+	g.Expect(<-errCh).NotTo(gomega.HaveOccurred())
+	g.Expect(<-errCh).NotTo(gomega.HaveOccurred())
 
 	// Verify healthy heartbeat completed significantly before failing heartbeat
 	healthyDuration := healthyCompleted.Sub(startTime)
