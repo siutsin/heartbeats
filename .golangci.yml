@@ -1,51 +1,85 @@
 version: "2"
+
 run:
   allow-parallel-runners: true
+  relative-path-mode: gomod
+  tests: true
+
 linters:
-  default: none
+  default: standard
   enable:
-  - copyloopvar
-  - dupl
-  - errcheck
-  - ginkgolinter
-  - goconst
-  - gocyclo
-  - govet
-  - ineffassign
-  - lll
-  - misspell
-  - nakedret
-  - prealloc
-  - revive
-  - staticcheck
-  - unconvert
-  - unparam
-  - unused
+    - bodyclose # Detect leaked HTTP response bodies.
+    - copyloopvar # Catch unsafe loop variable copies and captures.
+    - durationcheck # Flag invalid duration arithmetic.
+    - errorlint # Enforce modern wrapped-error handling.
+    - ginkgolinter # Enforce correct Ginkgo and Gomega test usage.
+    - misspell # Catch common spelling mistakes using UK English.
+    - noctx # Require context-aware APIs in non-test code paths.
+    - nolintlint # Keep nolint directives specific and justified.
+    - revive # Provide configurable, actively maintained style and correctness checks.
+    - testifylint # Catch misuse of testify assertions in tests.
+    - unconvert # Remove unnecessary type conversions.
+    - unparam # Find parameters that are never used by callees.
   settings:
+    errcheck:
+      check-blank: true
+      check-type-assertions: true
+    govet:
+      enable:
+        - nilness
+        - shadow
+    misspell:
+      locale: UK
+    nolintlint:
+      allow-unused: false
+      require-explanation: true
+      require-specific: true
     revive:
       rules:
-      - name: comment-spacings
+        - name: comment-spacings
+        - name: indent-error-flow
+        - name: unexported-return
+          disabled: true
+    testifylint:
+      enable-all: true
   exclusions:
     generated: lax
     rules:
-    - linters:
-      - lll
-      path: api/*
-    - linters:
-      - dupl
-      - lll
-      path: internal/*
+      - path: ^api/
+        linters:
+          - lll
+      - path: ^test/mocks/
+        linters:
+          - revive
+          - testifylint
+      - path: ^test/
+        linters:
+          - noctx
+      - path: (.+)_test\.go
+        linters:
+          - dupl
+          - goconst
+          - lll
     paths:
-    - third_party$
-    - builtin$
-    - examples$
+      - third_party$
+      - builtin$
+      - examples$
+
 formatters:
   enable:
-  - gofmt
-  - goimports
+    - gofmt
+    - goimports
+  settings:
+    gofmt:
+      rewrite-rules:
+        - pattern: interface{}
+          replacement: any
+    goimports:
+      local-prefixes:
+        - github.com/siutsin/heartbeats
   exclusions:
     generated: lax
     paths:
-    - third_party$
-    - builtin$
-    - examples$
+      - third_party$
+      - builtin$
+      - examples$

@@ -22,7 +22,9 @@ import (
 //   - *runtime.Scheme: A scheme with monitoring API types registered
 func setupScheme() *runtime.Scheme {
 	scheme := runtime.NewScheme()
-	_ = monitoringv1alpha1.AddToScheme(scheme)
+	if err := monitoringv1alpha1.AddToScheme(scheme); err != nil {
+		panic(err)
+	}
 	return scheme
 }
 

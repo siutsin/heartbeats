@@ -20,12 +20,14 @@ limitations under the License.
 package e2e
 
 import (
+	"context"
 	"fmt"
 	"os/exec"
 	"testing"
 
 	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
+
 	"github.com/siutsin/heartbeats/test/utils"
 )
 
@@ -69,17 +71,17 @@ var _ = ginkgo.AfterSuite(func() {
 // then creates a new cluster using the configuration file.
 func setupKindCluster() {
 	ginkgo.By("deleting any existing Kind cluster")
-	cmd := exec.Command("kind", "delete", "cluster")
+	cmd := exec.CommandContext(context.Background(), "kind", "delete", "cluster")
 	_, err := utils.Run(cmd)
 	if err != nil {
 		// If the cluster doesn't exist, that's fine
-		if _, err := fmt.Fprintf(ginkgo.GinkgoWriter, "No existing cluster to delete\n"); err != nil {
-			ginkgo.Fail(fmt.Sprintf("Failed to write to GinkgoWriter: %v", err))
+		if _, writeErr := fmt.Fprintf(ginkgo.GinkgoWriter, "No existing cluster to delete\n"); writeErr != nil {
+			ginkgo.Fail(fmt.Sprintf("Failed to write to GinkgoWriter: %v", writeErr))
 		}
 	}
 
 	ginkgo.By("creating a new Kind cluster")
-	cmd = exec.Command("kind", "create", "cluster", "--config", "test/e2e/kind-config.yaml")
+	cmd = exec.CommandContext(context.Background(), "kind", "create", "cluster", "--config", "test/e2e/kind-config.yaml")
 	_, err = utils.Run(cmd)
 	gomega.ExpectWithOffset(1, err).NotTo(gomega.HaveOccurred(), "Failed to create Kind cluster")
 }
@@ -88,7 +90,7 @@ func setupKindCluster() {
 // This ensures that the Kind cluster has access to the latest version of the operator for testing.
 func buildAndLoadOperatorImage() {
 	ginkgo.By("building the manager(Operator) image")
-	cmd := exec.Command("make", "docker-build", fmt.Sprintf("IMG=%s", projectImage))
+	cmd := exec.CommandContext(context.Background(), "make", "docker-build", fmt.Sprintf("IMG=%s", projectImage))
 	_, err := utils.Run(cmd)
 	gomega.ExpectWithOffset(1, err).NotTo(gomega.HaveOccurred(), "Failed to build the manager(Operator) image")
 

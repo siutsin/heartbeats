@@ -118,7 +118,9 @@ func TestCheckEndpointHealth_HealthyEndpoint(t *testing.T) {
 			serverBehavior: func(w http.ResponseWriter, _ *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusOK)
-				_, _ = w.Write([]byte(`{"healthy":true,"lastStatus":200,"message":"Endpoint is healthy"}`))
+				if _, err := w.Write([]byte(`{"healthy":true,"lastStatus":200,"message":"Endpoint is healthy"}`)); err != nil {
+					t.Errorf("failed to write response body: %v", err)
+				}
 			},
 		},
 	}

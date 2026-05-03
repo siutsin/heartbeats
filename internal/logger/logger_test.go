@@ -21,25 +21,25 @@ type testLogSink struct {
 type infoCall struct {
 	level int
 	msg   string
-	keys  []interface{}
+	keys  []any
 }
 
 type errorCall struct {
 	err  error
 	msg  string
-	keys []interface{}
+	keys []any
 }
 
 func (t *testLogSink) Init(_ logr.RuntimeInfo) {}
 func (t *testLogSink) Enabled(_ int) bool      { return true }
-func (t *testLogSink) Info(level int, msg string, keysAndValues ...interface{}) {
+func (t *testLogSink) Info(level int, msg string, keysAndValues ...any) {
 	t.infoCalls = append(t.infoCalls, infoCall{level: level, msg: msg, keys: keysAndValues})
 }
-func (t *testLogSink) Error(err error, msg string, keysAndValues ...interface{}) {
+func (t *testLogSink) Error(err error, msg string, keysAndValues ...any) {
 	t.errorCalls = append(t.errorCalls, errorCall{err: err, msg: msg, keys: keysAndValues})
 }
-func (t *testLogSink) WithValues(_ ...interface{}) logr.LogSink { return t }
-func (t *testLogSink) WithName(_ string) logr.LogSink           { return t }
+func (t *testLogSink) WithValues(_ ...any) logr.LogSink { return t }
+func (t *testLogSink) WithName(_ string) logr.LogSink   { return t }
 
 func TestWithRequest(t *testing.T) {
 	g := gomega.NewWithT(t)
@@ -61,7 +61,7 @@ func TestInfo(t *testing.T) {
 	tests := []struct {
 		name             string
 		message          string
-		additionalFields map[string]interface{}
+		additionalFields map[string]any
 		description      string
 	}{
 		{
@@ -73,7 +73,7 @@ func TestInfo(t *testing.T) {
 		{
 			name:    "with additional fields",
 			message: "test message with fields",
-			additionalFields: map[string]interface{}{
+			additionalFields: map[string]any{
 				"key1": "value1",
 				"key2": "value2",
 			},
@@ -109,7 +109,7 @@ func TestError(t *testing.T) {
 		name             string
 		message          string
 		err              error
-		additionalFields map[string]interface{}
+		additionalFields map[string]any
 		description      string
 	}{
 		{
@@ -123,7 +123,7 @@ func TestError(t *testing.T) {
 			name:    "with additional fields",
 			message: "test error message with fields",
 			err:     errors.New("test error"),
-			additionalFields: map[string]interface{}{
+			additionalFields: map[string]any{
 				"key1": "value1",
 				"key2": "value2",
 			},
@@ -163,7 +163,7 @@ func TestLogEndpointExtractionError(t *testing.T) {
 		endpointType      string
 		key               string
 		err               error
-		expectedKeys      []interface{}
+		expectedKeys      []any
 		description       string
 	}{
 		{
@@ -174,7 +174,7 @@ func TestLogEndpointExtractionError(t *testing.T) {
 			endpointType:      "healthy",
 			key:               "test-key",
 			err:               errors.New("test extraction error"),
-			expectedKeys: []interface{}{
+			expectedKeys: []any{
 				"namespace", "test-namespace", "name", "test-name",
 				"healthy_endpoint_key", "test-key",
 			},
@@ -188,7 +188,7 @@ func TestLogEndpointExtractionError(t *testing.T) {
 			endpointType:      "unhealthy",
 			key:               "other-key",
 			err:               errors.New("test extraction error"),
-			expectedKeys: []interface{}{
+			expectedKeys: []any{
 				"namespace", "other-namespace", "name", "other-name",
 				"unhealthy_endpoint_key", "other-key",
 			},

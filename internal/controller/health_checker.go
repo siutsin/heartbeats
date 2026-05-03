@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -94,7 +95,8 @@ func (h *DefaultHealthChecker) executeRequest(req *http.Request, log logr.Logger
 
 // handleRequestError processes and categorises request errors.
 func (h *DefaultHealthChecker) handleRequestError(req *http.Request, log logr.Logger, err error, attempt int) error {
-	if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
 		log.Error(err, "Request timeout",
 			"method", req.Method,
 			"endpoint", req.URL.String(),
@@ -315,6 +317,15 @@ func (h *DefaultHealthChecker) executeReportRequest(
 		h.logReportRequestError(err, reportURL, reportMethod, healthStatus, log)
 		return false
 	}
+	defer func() {
+		if closeErr := reportResp.Body.Close(); closeErr != nil {
+			log.Error(closeErr, "Failed to close report response body",
+				"report_url", reportURL,
+				"report_method", reportMethod,
+				"health_status", healthStatus,
+			)
+		}
+	}()
 
 	return h.handleReportResponse(reportResp, reportURL, reportMethod, healthStatus, log)
 }

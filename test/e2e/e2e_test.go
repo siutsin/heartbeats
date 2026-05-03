@@ -27,6 +27,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/goccy/go-yaml"
@@ -57,7 +58,7 @@ var _ = ginkgo.Describe("Manager", ginkgo.Ordered, func() {
 	// BeforeAll sets up the test environment before any manager tests run.
 	// It configures the namespace with restricted security policy for testing.
 	ginkgo.BeforeAll(func() {
-		ginkgo.By("labeling the namespace to enforce the restricted security policy")
+		ginkgo.By("labelling the namespace to enforce the restricted security policy")
 		cmd := exec.Command("kubectl", "label", "--overwrite", "ns", namespace,
 			"pod-security.kubernetes.io/enforce=restricted")
 		_, err := utils.Run(cmd)
@@ -106,27 +107,39 @@ func collectManagerDiagnosticInfo(controllerPodName string) {
 	cmd := exec.Command("kubectl", "logs", controllerPodName, "-n", namespace)
 	controllerLogs, err := utils.Run(cmd)
 	if err == nil {
-		_, _ = fmt.Fprintf(ginkgo.GinkgoWriter, "Controller logs:\n %s", controllerLogs)
+		if _, writeErr := fmt.Fprintf(ginkgo.GinkgoWriter, "Controller logs:\n %s", controllerLogs); writeErr != nil {
+			ginkgo.Fail(fmt.Sprintf("Failed to write controller logs: %v", writeErr))
+		}
 	} else {
-		_, _ = fmt.Fprintf(ginkgo.GinkgoWriter, "Failed to get Controller logs: %s", err)
+		if _, writeErr := fmt.Fprintf(ginkgo.GinkgoWriter, "Failed to get Controller logs: %s", err); writeErr != nil {
+			ginkgo.Fail(fmt.Sprintf("Failed to write controller log error: %v", writeErr))
+		}
 	}
 
 	ginkgo.By("Fetching Kubernetes events")
 	cmd = exec.Command("kubectl", "get", "events", "-n", namespace, "--sort-by=.lastTimestamp")
 	eventsOutput, err := utils.Run(cmd)
 	if err == nil {
-		_, _ = fmt.Fprintf(ginkgo.GinkgoWriter, "Kubernetes events:\n%s", eventsOutput)
+		if _, writeErr := fmt.Fprintf(ginkgo.GinkgoWriter, "Kubernetes events:\n%s", eventsOutput); writeErr != nil {
+			ginkgo.Fail(fmt.Sprintf("Failed to write Kubernetes events: %v", writeErr))
+		}
 	} else {
-		_, _ = fmt.Fprintf(ginkgo.GinkgoWriter, "Failed to get Kubernetes events: %s", err)
+		if _, writeErr := fmt.Fprintf(ginkgo.GinkgoWriter, "Failed to get Kubernetes events: %s", err); writeErr != nil {
+			ginkgo.Fail(fmt.Sprintf("Failed to write Kubernetes event error: %v", writeErr))
+		}
 	}
 
 	ginkgo.By("Fetching curl-metrics logs")
 	cmd = exec.Command("kubectl", "logs", "curl-metrics", "-n", namespace)
 	metricsOutput, err := utils.Run(cmd)
 	if err == nil {
-		_, _ = fmt.Fprintf(ginkgo.GinkgoWriter, "Metrics logs:\n %s", metricsOutput)
+		if _, writeErr := fmt.Fprintf(ginkgo.GinkgoWriter, "Metrics logs:\n %s", metricsOutput); writeErr != nil {
+			ginkgo.Fail(fmt.Sprintf("Failed to write metrics logs: %v", writeErr))
+		}
 	} else {
-		_, _ = fmt.Fprintf(ginkgo.GinkgoWriter, "Failed to get curl-metrics logs: %s", err)
+		if _, writeErr := fmt.Fprintf(ginkgo.GinkgoWriter, "Failed to get curl-metrics logs: %s", err); writeErr != nil {
+			ginkgo.Fail(fmt.Sprintf("Failed to write metrics log error: %v", writeErr))
+		}
 	}
 
 	ginkgo.By("Fetching controller manager pod description")
@@ -306,8 +319,8 @@ func serviceAccountToken() (string, error) {
 		return "", err
 	}
 	defer func() {
-		if err := os.Remove(tokenRequestFile); err != nil {
-			ginkgo.Fail(fmt.Sprintf("Failed to remove token request file: %v", err))
+		if removeErr := os.Remove(tokenRequestFile); removeErr != nil {
+			ginkgo.Fail(fmt.Sprintf("Failed to remove token request file: %v", removeErr))
 		}
 	}()
 
@@ -320,13 +333,13 @@ func serviceAccountToken() (string, error) {
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return "", fmt.Errorf("failed to create token: %v", err)
+		return "", fmt.Errorf("failed to create token: %w", err)
 	}
 
 	// Parse the JSON output to extract the token
 	var token tokenRequest
 	if err := json.Unmarshal(output, &token); err != nil {
-		return "", fmt.Errorf("failed to parse token response: %v", err)
+		return "", fmt.Errorf("failed to parse token response: %w", err)
 	}
 
 	if token.Status.Token == "" {
@@ -468,9 +481,15 @@ func createInitialHealthySecret(secretName string) {
 func cleanupHeartbeatResources(heartbeatName string) {
 	ginkgo.By("deleting the Heartbeat resources")
 	cmd := exec.Command("kubectl", "delete", "heartbeat", heartbeatName, "-n", namespace)
-	_, _ = utils.Run(cmd)
+	output, err := utils.Run(cmd)
+	if err != nil && !strings.Contains(output, "NotFound") {
+		gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to delete healthy heartbeat")
+	}
 	cmd = exec.Command("kubectl", "delete", "heartbeat", heartbeatName+"-unhealthy", "-n", namespace)
-	_, _ = utils.Run(cmd)
+	output, err = utils.Run(cmd)
+	if err != nil && !strings.Contains(output, "NotFound") {
+		gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to delete unhealthy heartbeat")
+	}
 }
 
 // createHealthyHeartbeat creates a Heartbeat resource that references the healthy endpoints secret.
@@ -611,10 +630,10 @@ func createMissingKeysSecret(secretName string) {
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 	// Parse the YAML and modify it to have empty data
-	var secretYAML map[string]interface{}
+	var secretYAML map[string]any
 	err = yaml.Unmarshal([]byte(output), &secretYAML)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
-	secretYAML["data"] = map[string]interface{}{}
+	secretYAML["data"] = map[string]any{}
 
 	// Convert back to YAML
 	modifiedOutput, err := yaml.Marshal(secretYAML)

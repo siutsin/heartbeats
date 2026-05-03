@@ -22,13 +22,14 @@ package utils
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 
-	ginkgo "github.com/onsi/ginkgo/v2" //nolint:revive
+	ginkgo "github.com/onsi/ginkgo/v2"
 )
 
 // Constants for operator versions and URLs
@@ -45,13 +46,21 @@ const (
 	certmanagerURLTmpl = "https://github.com/cert-manager/cert-manager/releases/download/%s/cert-manager.yaml"
 )
 
+// writeGinkgoWriterf writes formatted output to the Ginkgo writer.
+func writeGinkgoWriterf(format string, args ...any) error {
+	_, err := fmt.Fprintf(ginkgo.GinkgoWriter, format, args...)
+	return err
+}
+
 // warnError logs a warning message when an error occurs during cleanup operations.
 // This function is used for non-critical errors that shouldn't fail the test.
 //
 // Parameters:
 //   - err: The error to log as a warning
 func warnError(err error) {
-	_, _ = fmt.Fprintf(ginkgo.GinkgoWriter, "warning: %v\n", err)
+	if writeErr := writeGinkgoWriterf("warning: %v\n", err); writeErr != nil {
+		return
+	}
 }
 
 // Run executes the provided command within the project context.
@@ -65,19 +74,26 @@ func warnError(err error) {
 //   - string: The combined stdout and stderr output
 //   - error: Any error that occurred during command execution
 func Run(cmd *exec.Cmd) (string, error) {
-	dir, _ := GetProjectDir()
+	dir, err := GetProjectDir()
+	if err != nil {
+		return "", err
+	}
 	cmd.Dir = dir
 
-	if err := os.Chdir(cmd.Dir); err != nil {
-		_, _ = fmt.Fprintf(ginkgo.GinkgoWriter, "chdir dir: %s\n", err)
+	if chdirErr := os.Chdir(cmd.Dir); chdirErr != nil {
+		if writeErr := writeGinkgoWriterf("chdir dir: %s\n", chdirErr); writeErr != nil {
+			return "", writeErr
+		}
 	}
 
 	cmd.Env = append(os.Environ(), "GO111MODULE=on")
 	command := strings.Join(cmd.Args, " ")
-	_, _ = fmt.Fprintf(ginkgo.GinkgoWriter, "running: %s\n", command)
+	if writeErr := writeGinkgoWriterf("running: %s\n", command); writeErr != nil {
+		return "", writeErr
+	}
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return string(output), fmt.Errorf("%s failed with error: (%v) %s", command, err, string(output))
+		return string(output), fmt.Errorf("%s failed with error: (%w) %s", command, err, string(output))
 	}
 
 	return string(output), nil
@@ -94,21 +110,28 @@ func Run(cmd *exec.Cmd) (string, error) {
 //   - string: The combined stdout and stderr output
 //   - error: Any error that occurred during command execution
 func RunWithInput(cmd *exec.Cmd, input string) (string, error) {
-	dir, _ := GetProjectDir()
+	dir, err := GetProjectDir()
+	if err != nil {
+		return "", err
+	}
 	cmd.Dir = dir
 
-	if err := os.Chdir(cmd.Dir); err != nil {
-		_, _ = fmt.Fprintf(ginkgo.GinkgoWriter, "chdir dir: %s\n", err)
+	if chdirErr := os.Chdir(cmd.Dir); chdirErr != nil {
+		if writeErr := writeGinkgoWriterf("chdir dir: %s\n", chdirErr); writeErr != nil {
+			return "", writeErr
+		}
 	}
 
 	cmd.Env = append(os.Environ(), "GO111MODULE=on")
 	command := strings.Join(cmd.Args, " ")
-	_, _ = fmt.Fprintf(ginkgo.GinkgoWriter, "running: %s\n", command)
+	if writeErr := writeGinkgoWriterf("running: %s\n", command); writeErr != nil {
+		return "", writeErr
+	}
 
 	// Set up pipes for stdin, stdout, and stderr
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
-		return "", fmt.Errorf("failed to create stdin pipe: %v", err)
+		return "", fmt.Errorf("failed to create stdin pipe: %w", err)
 	}
 
 	var stdout, stderr bytes.Buffer
@@ -116,23 +139,23 @@ func RunWithInput(cmd *exec.Cmd, input string) (string, error) {
 	cmd.Stderr = &stderr
 
 	// Start the command
-	if err := cmd.Start(); err != nil {
-		return "", fmt.Errorf("failed to start command: %v", err)
+	if startErr := cmd.Start(); startErr != nil {
+		return "", fmt.Errorf("failed to start command: %w", startErr)
 	}
 
 	// Write input to stdin
-	if _, err := stdin.Write([]byte(input)); err != nil {
-		return "", fmt.Errorf("failed to write to stdin: %v", err)
+	if _, writeErr := stdin.Write([]byte(input)); writeErr != nil {
+		return "", fmt.Errorf("failed to write to stdin: %w", writeErr)
 	}
-	if err := stdin.Close(); err != nil {
-		return "", fmt.Errorf("failed to close stdin: %v", err)
+	if closeErr := stdin.Close(); closeErr != nil {
+		return "", fmt.Errorf("failed to close stdin: %w", closeErr)
 	}
 
 	// Wait for command to complete
 	err = cmd.Wait()
 	if err != nil {
 		combinedOutput := stdout.String() + stderr.String()
-		return combinedOutput, fmt.Errorf("%s failed with error: (%v) %s", command, err, combinedOutput)
+		return combinedOutput, fmt.Errorf("%s failed with error: (%w) %s", command, err, combinedOutput)
 	}
 
 	// Return combined output
@@ -146,7 +169,7 @@ func RunWithInput(cmd *exec.Cmd, input string) (string, error) {
 //   - error: Any error that occurred during installation
 func InstallPrometheusOperator() error {
 	url := fmt.Sprintf(prometheusOperatorURL, prometheusOperatorVersion)
-	cmd := exec.Command("kubectl", "create", "-f", url)
+	cmd := exec.CommandContext(context.Background(), "kubectl", "create", "-f", url)
 	_, err := Run(cmd)
 	return err
 }
@@ -156,7 +179,7 @@ func InstallPrometheusOperator() error {
 // Errors during uninstallation are logged as warnings since they're not critical.
 func UninstallPrometheusOperator() {
 	url := fmt.Sprintf(prometheusOperatorURL, prometheusOperatorVersion)
-	cmd := exec.Command("kubectl", "delete", "-f", url)
+	cmd := exec.CommandContext(context.Background(), "kubectl", "delete", "-f", url)
 	if _, err := Run(cmd); err != nil {
 		warnError(err)
 	}
@@ -176,7 +199,7 @@ func IsPrometheusCRDsInstalled() bool {
 		"prometheusagents.monitoring.coreos.com",
 	}
 
-	cmd := exec.Command("kubectl", "get", "crds", "-o", "custom-columns=NAME:.metadata.name")
+	cmd := exec.CommandContext(context.Background(), "kubectl", "get", "crds", "-o", "custom-columns=NAME:.metadata.name")
 	output, err := Run(cmd)
 	if err != nil {
 		return false
@@ -198,7 +221,7 @@ func IsPrometheusCRDsInstalled() bool {
 // Errors during uninstallation are logged as warnings since they're not critical.
 func UninstallCertManager() {
 	url := fmt.Sprintf(certmanagerURLTmpl, certmanagerVersion)
-	cmd := exec.Command("kubectl", "delete", "-f", url)
+	cmd := exec.CommandContext(context.Background(), "kubectl", "delete", "-f", url)
 	if _, err := Run(cmd); err != nil {
 		warnError(err)
 	}
@@ -213,14 +236,14 @@ func UninstallCertManager() {
 //   - error: Any error that occurred during installation
 func InstallCertManager() error {
 	url := fmt.Sprintf(certmanagerURLTmpl, certmanagerVersion)
-	cmd := exec.Command("kubectl", "apply", "-f", url)
+	cmd := exec.CommandContext(context.Background(), "kubectl", "apply", "-f", url)
 	if _, err := Run(cmd); err != nil {
 		return err
 	}
 
 	// Wait for cert-manager-webhook to be ready, which can take time if cert-manager
 	// was re-installed after uninstalling on a cluster.
-	cmd = exec.Command("kubectl", "wait", "deployment.apps/cert-manager-webhook",
+	cmd = exec.CommandContext(context.Background(), "kubectl", "wait", "deployment.apps/cert-manager-webhook",
 		"--for", "condition=Available",
 		"--namespace", "cert-manager",
 		"--timeout", "5m",
@@ -248,7 +271,7 @@ func IsCertManagerCRDsInstalled() bool {
 	}
 
 	// Execute the kubectl command to get all CRDs
-	cmd := exec.Command("kubectl", "get", "crds")
+	cmd := exec.CommandContext(context.Background(), "kubectl", "get", "crds")
 	output, err := Run(cmd)
 	if err != nil {
 		return false
@@ -290,12 +313,12 @@ func LoadImageToKindClusterWithName(name string) error {
 		}
 
 		defer func() {
-			if err := os.Remove(tmpFile.Name()); err != nil {
-				warnError(err)
+			if removeErr := os.Remove(tmpFile.Name()); removeErr != nil {
+				warnError(removeErr)
 			}
 		}()
-		if err := tmpFile.Close(); err != nil {
-			return err
+		if closeErr := tmpFile.Close(); closeErr != nil {
+			return closeErr
 		}
 
 		// Ensure we have both localhost/ prefixed and non-prefixed tags
@@ -305,24 +328,24 @@ func LoadImageToKindClusterWithName(name string) error {
 		}
 
 		// Tag image without localhost/ prefix
-		if _, err := Run(exec.Command("podman", "tag", podmanImage, name)); err != nil {
-			return err
+		if _, runErr := Run(exec.CommandContext(context.Background(), "podman", "tag", podmanImage, name)); runErr != nil {
+			return runErr
 		}
 
 		// Save the non-prefixed image to tar
-		if _, err := Run(exec.Command("podman", "save", "-o", tmpFile.Name(), name)); err != nil {
-			return err
+		if _, runErr := Run(exec.CommandContext(context.Background(), "podman", "save", "-o", tmpFile.Name(), name)); runErr != nil {
+			return runErr
 		}
 
 		// Copy tar into kind container
 		destPath := "/tmp/" + filepath.Base(tmpFile.Name())
 		containerName := cluster + "-control-plane"
-		if _, err := Run(exec.Command("podman", "cp", tmpFile.Name(), containerName+":"+destPath)); err != nil {
-			return err
+		if _, runErr := Run(exec.CommandContext(context.Background(), "podman", "cp", tmpFile.Name(), containerName+":"+destPath)); runErr != nil {
+			return runErr
 		}
 
 		// Import image into containerd using ctr
-		_, err = Run(exec.Command("podman", "exec", containerName, "ctr", "-n", "k8s.io", "images", "import", destPath))
+		_, err = Run(exec.CommandContext(context.Background(), "podman", "exec", containerName, "ctr", "-n", "k8s.io", "images", "import", destPath))
 		if err != nil {
 			return err
 		}
@@ -330,19 +353,21 @@ func LoadImageToKindClusterWithName(name string) error {
 		// Tag the image to remove localhost/ prefix (containerd imports with localhost/ but k8s expects docker.io/library/)
 		localImage := "localhost/" + name
 		dockerImage := "docker.io/library/" + name
-		cmd := exec.Command("podman", "exec", containerName, "ctr", "-n", "k8s.io", "images", "tag", localImage, dockerImage)
+		cmd := exec.CommandContext(context.Background(), "podman", "exec", containerName, "ctr", "-n", "k8s.io", "images", "tag", localImage, dockerImage)
 		if _, err := Run(cmd); err != nil {
 			return err
 		}
 
 		// Clean up the tar file inside the container
-		_, _ = Run(exec.Command("podman", "exec", containerName, "rm", destPath))
+		if _, err := Run(exec.CommandContext(context.Background(), "podman", "exec", containerName, "rm", destPath)); err != nil {
+			warnError(err)
+		}
 		return nil
 	}
 
 	// For docker, use direct image loading
 	kindOptions := []string{"load", "docker-image", name, "--name", cluster}
-	cmd := exec.Command("kind", kindOptions...)
+	cmd := exec.CommandContext(context.Background(), "kind", kindOptions...)
 	_, err := Run(cmd)
 	return err
 }
@@ -396,8 +421,7 @@ func GetProjectDir() (string, error) {
 // Returns:
 //   - error: Any error that occurred during file modification
 func UncommentCode(filename, target, prefix string) error {
-	// false positive
-	// nolint:gosec
+	//nolint:gosec // Test helper reads a caller-provided fixture file path.
 	content, err := os.ReadFile(filename)
 	if err != nil {
 		return err
@@ -420,16 +444,16 @@ func UncommentCode(filename, target, prefix string) error {
 		return nil
 	}
 	for {
-		_, err := out.WriteString(strings.TrimPrefix(scanner.Text(), prefix))
-		if err != nil {
-			return err
+		_, writeErr := out.WriteString(strings.TrimPrefix(scanner.Text(), prefix))
+		if writeErr != nil {
+			return writeErr
 		}
 		// Avoid writing a newline in case the previous line was the last in target.
 		if !scanner.Scan() {
 			break
 		}
-		if _, err := out.WriteString("\n"); err != nil {
-			return err
+		if _, newlineErr := out.WriteString("\n"); newlineErr != nil {
+			return newlineErr
 		}
 	}
 
@@ -437,7 +461,6 @@ func UncommentCode(filename, target, prefix string) error {
 	if err != nil {
 		return err
 	}
-	// false positive
-	// nolint:gosec
+	//nolint:gosec // Test helper writes fixture data back to the same caller-provided path.
 	return os.WriteFile(filename, out.Bytes(), 0644)
 }
