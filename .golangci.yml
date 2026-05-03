@@ -55,6 +55,9 @@ linters:
       - path: ^test/
         linters:
           - noctx
+      - path: ^cmd/main\.go$
+        linters:
+          - misspell
       - path: (.+)_test\.go
         linters:
           - dupl

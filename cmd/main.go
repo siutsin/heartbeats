@@ -142,7 +142,7 @@ func main() {
 	webhookTLSOpts := tlsOpts
 
 	if len(webhookCertPath) > 0 {
-		setupLog.Info("Initialising webhook certificate watcher using provided certificates",
+		setupLog.Info("Initializing webhook certificate watcher using provided certificates",
 			"webhook-cert-path", webhookCertPath, "webhook-cert-name", webhookCertName, "webhook-cert-key", webhookCertKey)
 
 		var err error
@@ -151,7 +151,7 @@ func main() {
 			filepath.Join(webhookCertPath, webhookCertKey),
 		)
 		if err != nil {
-			setupLog.Error(err, "Failed to initialise webhook certificate watcher")
+			setupLog.Error(err, "Failed to initialize webhook certificate watcher")
 			os.Exit(1)
 		}
 
@@ -191,7 +191,7 @@ func main() {
 	// managed by cert-manager for the metrics server.
 	// - [PROMETHEUS-WITH-CERTS] at config/prometheus/kustomization.yaml for TLS certification.
 	if len(metricsCertPath) > 0 {
-		setupLog.Info("Initialising metrics certificate watcher using provided certificates",
+		setupLog.Info("Initializing metrics certificate watcher using provided certificates",
 			"metrics-cert-path", metricsCertPath, "metrics-cert-name", metricsCertName, "metrics-cert-key", metricsCertKey)
 
 		var err error
@@ -200,7 +200,7 @@ func main() {
 			filepath.Join(metricsCertPath, metricsCertKey),
 		)
 		if err != nil {
-			setupLog.Error(err, "Failed to initialise metrics certificate watcher")
+			setupLog.Error(err, "Failed to initialize metrics certificate watcher")
 			os.Exit(1)
 		}
 

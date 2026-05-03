@@ -375,7 +375,7 @@ func (h *DefaultHealthChecker) handleReportResponse(
 	reportURL, reportMethod, healthStatus string,
 	log logr.Logger,
 ) bool {
-	if reportResp != nil && reportResp.StatusCode >= 200 && reportResp.StatusCode < 300 {
+	if reportResp.StatusCode >= 200 && reportResp.StatusCode < 300 {
 		log.V(1).Info("Report request successful",
 			"report_url", reportURL,
 			"report_method", reportMethod,

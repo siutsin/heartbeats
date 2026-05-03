@@ -20,10 +20,12 @@ import (
 //
 // Returns:
 //   - *runtime.Scheme: A scheme with monitoring API types registered
-func setupScheme() *runtime.Scheme {
+func setupScheme(t *testing.T) *runtime.Scheme {
+	t.Helper()
+
 	scheme := runtime.NewScheme()
 	if err := monitoringv1alpha1.AddToScheme(scheme); err != nil {
-		panic(err)
+		t.Fatalf("add monitoring API to scheme: %v", err)
 	}
 	return scheme
 }
@@ -46,13 +48,16 @@ func createTestHeartbeat() *monitoringv1alpha1.Heartbeat {
 // This helper function reduces code duplication in tests.
 //
 // Parameters:
+//   - t: The test instance used for helper failures
 //   - heartbeat: The heartbeat object to include in the fake client
 //
 // Returns:
 //   - client.Client: A fake client with the heartbeat registered
-func createTestClient(heartbeat *monitoringv1alpha1.Heartbeat) client.Client {
+func createTestClient(t *testing.T, heartbeat *monitoringv1alpha1.Heartbeat) client.Client {
+	t.Helper()
+
 	return fake.NewClientBuilder().
-		WithScheme(setupScheme()).
+		WithScheme(setupScheme(t)).
 		WithObjects(heartbeat).
 		WithStatusSubresource(heartbeat).
 		Build()
@@ -63,7 +68,7 @@ func createTestClient(heartbeat *monitoringv1alpha1.Heartbeat) client.Client {
 func TestNewStatusUpdater(t *testing.T) {
 	g := gomega.NewWithT(t)
 
-	client := fake.NewClientBuilder().WithScheme(setupScheme()).Build()
+	client := fake.NewClientBuilder().WithScheme(setupScheme(t)).Build()
 	updater := controller.NewStatusUpdater(client)
 
 	g.Expect(updater).NotTo(gomega.BeNil())
@@ -83,7 +88,7 @@ func TestUpdateStatus_Basic(t *testing.T) {
 	}
 
 	client := fake.NewClientBuilder().
-		WithScheme(setupScheme()).
+		WithScheme(setupScheme(t)).
 		WithObjects(heartbeat).
 		WithStatusSubresource(heartbeat).
 		Build()
@@ -175,7 +180,7 @@ func runErrorConditionTest(t *testing.T, tt struct {
 	g := gomega.NewWithT(t)
 
 	heartbeat := createTestHeartbeat()
-	client := createTestClient(heartbeat)
+	client := createTestClient(t, heartbeat)
 	updater := controller.NewStatusUpdater(client)
 
 	err := tt.updateFunc(updater, context.Background(), heartbeat)
@@ -193,7 +198,7 @@ func TestUpdateHealthStatus_HealthyEndpoint(t *testing.T) {
 	g := gomega.NewWithT(t)
 
 	heartbeat := createTestHeartbeat()
-	client := createTestClient(heartbeat)
+	client := createTestClient(t, heartbeat)
 	updater := controller.NewStatusUpdater(client)
 
 	err := updater.UpdateHealthStatus(
@@ -240,7 +245,7 @@ func TestUpdateHealthStatus_UnhealthyEndpoint(t *testing.T) {
 			g := gomega.NewWithT(t)
 
 			heartbeat := createTestHeartbeat()
-			client := createTestClient(heartbeat)
+			client := createTestClient(t, heartbeat)
 			updater := controller.NewStatusUpdater(client)
 
 			err := updater.UpdateHealthStatus(
@@ -267,7 +272,7 @@ func TestUpdateHealthStatus_ReportFailure(t *testing.T) {
 	g := gomega.NewWithT(t)
 
 	heartbeat := createTestHeartbeat()
-	client := createTestClient(heartbeat)
+	client := createTestClient(t, heartbeat)
 	updater := controller.NewStatusUpdater(client)
 
 	err := updater.UpdateHealthStatus(
