@@ -97,6 +97,13 @@ var _ = ginkgo.Describe("Manager", ginkgo.Ordered, func() {
 	})
 })
 
+// writeDiagnosticf writes diagnostic output to the Ginkgo writer without changing test control flow.
+// Diagnostic logging should never mask the original test failure it is trying to explain.
+func writeDiagnosticf(format string, args ...any) {
+	//nolint:errcheck // Diagnostic writer failures are not actionable and must not replace the original test failure.
+	_, _ = fmt.Fprintf(ginkgo.GinkgoWriter, format, args...)
+}
+
 // collectManagerDiagnosticInfo gathers logs, events, and pod descriptions for debugging failed manager tests.
 // This function is called when a test fails to provide diagnostic information.
 //
@@ -107,48 +114,36 @@ func collectManagerDiagnosticInfo(controllerPodName string) {
 	cmd := exec.Command("kubectl", "logs", controllerPodName, "-n", namespace)
 	controllerLogs, err := utils.Run(cmd)
 	if err == nil {
-		if _, writeErr := fmt.Fprintf(ginkgo.GinkgoWriter, "Controller logs:\n %s", controllerLogs); writeErr != nil {
-			ginkgo.Fail(fmt.Sprintf("Failed to write controller logs: %v", writeErr))
-		}
+		writeDiagnosticf("Controller logs:\n %s", controllerLogs)
 	} else {
-		if _, writeErr := fmt.Fprintf(ginkgo.GinkgoWriter, "Failed to get Controller logs: %s", err); writeErr != nil {
-			ginkgo.Fail(fmt.Sprintf("Failed to write controller log error: %v", writeErr))
-		}
+		writeDiagnosticf("Failed to get Controller logs: %s", err)
 	}
 
 	ginkgo.By("Fetching Kubernetes events")
 	cmd = exec.Command("kubectl", "get", "events", "-n", namespace, "--sort-by=.lastTimestamp")
 	eventsOutput, err := utils.Run(cmd)
 	if err == nil {
-		if _, writeErr := fmt.Fprintf(ginkgo.GinkgoWriter, "Kubernetes events:\n%s", eventsOutput); writeErr != nil {
-			ginkgo.Fail(fmt.Sprintf("Failed to write Kubernetes events: %v", writeErr))
-		}
+		writeDiagnosticf("Kubernetes events:\n%s", eventsOutput)
 	} else {
-		if _, writeErr := fmt.Fprintf(ginkgo.GinkgoWriter, "Failed to get Kubernetes events: %s", err); writeErr != nil {
-			ginkgo.Fail(fmt.Sprintf("Failed to write Kubernetes event error: %v", writeErr))
-		}
+		writeDiagnosticf("Failed to get Kubernetes events: %s", err)
 	}
 
 	ginkgo.By("Fetching curl-metrics logs")
 	cmd = exec.Command("kubectl", "logs", "curl-metrics", "-n", namespace)
 	metricsOutput, err := utils.Run(cmd)
 	if err == nil {
-		if _, writeErr := fmt.Fprintf(ginkgo.GinkgoWriter, "Metrics logs:\n %s", metricsOutput); writeErr != nil {
-			ginkgo.Fail(fmt.Sprintf("Failed to write metrics logs: %v", writeErr))
-		}
+		writeDiagnosticf("Metrics logs:\n %s", metricsOutput)
 	} else {
-		if _, writeErr := fmt.Fprintf(ginkgo.GinkgoWriter, "Failed to get curl-metrics logs: %s", err); writeErr != nil {
-			ginkgo.Fail(fmt.Sprintf("Failed to write metrics log error: %v", writeErr))
-		}
+		writeDiagnosticf("Failed to get curl-metrics logs: %s", err)
 	}
 
 	ginkgo.By("Fetching controller manager pod description")
 	cmd = exec.Command("kubectl", "describe", "pod", controllerPodName, "-n", namespace)
 	podDescription, err := utils.Run(cmd)
 	if err == nil {
-		fmt.Println("Pod description:\n", podDescription)
+		writeDiagnosticf("Pod description:\n %s", podDescription)
 	} else {
-		fmt.Println("Failed to describe controller pod")
+		writeDiagnosticf("Failed to describe controller pod")
 	}
 }
 
