@@ -50,6 +50,11 @@ const metricsServiceName = "heartbeats-operator-controller-manager-metrics-servi
 // metricsRoleBindingName is the name of the RBAC that will be created to allow get the metrics data
 const metricsRoleBindingName = "heartbeats-operator-metrics-binding"
 
+const (
+	heartbeatTestServerName = "heartbeat-e2e-http"
+	heartbeatTestServerPort = 8080
+)
+
 // ManagerTestSuite contains all the e2e tests related to the controller manager functionality.
 // This includes tests for basic manager operation, metrics endpoint availability, and controller health.
 var _ = ginkgo.Describe("Manager", ginkgo.Ordered, func() {
@@ -379,7 +384,13 @@ var _ = ginkgo.Describe("Heartbeat", ginkgo.Ordered, func() {
 	// BeforeAll sets up the test environment for Heartbeat tests.
 	// It creates the initial healthy endpoints secret used by multiple tests.
 	ginkgo.BeforeAll(func() {
+		deployHeartbeatTestServer()
 		createInitialHealthySecret(healthySecretName)
+	})
+
+	// AfterAll cleans up shared Heartbeat test infrastructure.
+	ginkgo.AfterAll(func() {
+		cleanupHeartbeatTestServer()
 	})
 
 	// AfterEach cleans up Heartbeat resources after each test.
@@ -460,12 +471,143 @@ var _ = ginkgo.Describe("Heartbeat", ginkgo.Ordered, func() {
 func createInitialHealthySecret(secretName string) {
 	ginkgo.By("creating a secret with endpoints")
 	cmd := exec.Command("kubectl", "create", "secret", "generic", secretName,
-		"--from-literal=targetEndpoint=https://httpbin.org/status/200",
-		"--from-literal=healthyEndpoint=https://httpbin.org/status/200",
-		"--from-literal=unhealthyEndpoint=https://httpbin.org/status/200",
+		"--from-literal=targetEndpoint="+statusEndpoint(200),
+		"--from-literal=healthyEndpoint="+statusEndpoint(200),
+		"--from-literal=unhealthyEndpoint="+statusEndpoint(200),
 		"-n", namespace)
 	_, err := utils.Run(cmd)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to create secret")
+}
+
+// deployHeartbeatTestServer deploys a cluster-local HTTP server used by Heartbeat e2e tests.
+func deployHeartbeatTestServer() {
+	ginkgo.By("deploying the Heartbeat test HTTP server")
+	testServerYAML := fmt.Sprintf(`apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: %[1]s
+  namespace: %[2]s
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: %[1]s
+  template:
+    metadata:
+      labels:
+        app: %[1]s
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: http
+        image: python:3.13-alpine
+        imagePullPolicy: IfNotPresent
+        command:
+        - python
+        - -c
+        - |
+          import re
+          import time
+          from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+          class Handler(BaseHTTPRequestHandler):
+              def handle_request(self):
+                  delay_match = re.fullmatch(r"/delay/(\d+)", self.path)
+                  status_match = re.fullmatch(r"/status/(\d+)", self.path)
+                  if delay_match:
+                      time.sleep(int(delay_match.group(1)))
+                      status = 200
+                  elif status_match:
+                      status = int(status_match.group(1))
+                  else:
+                      status = 200
+                  self.send_response(status)
+                  self.end_headers()
+
+              do_GET = handle_request
+              do_POST = handle_request
+              do_PUT = handle_request
+              do_PATCH = handle_request
+
+              def log_message(self, format, *args):
+                  return
+
+          ThreadingHTTPServer(("0.0.0.0", %[3]d), Handler).serve_forever()
+        ports:
+        - containerPort: %[3]d
+        readinessProbe:
+          httpGet:
+            path: /status/200
+            port: %[3]d
+          periodSeconds: 1
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          limits:
+            memory: 64Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          runAsNonRoot: true
+          runAsUser: 1000
+          seccompProfile:
+            type: RuntimeDefault
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: %[1]s
+  namespace: %[2]s
+spec:
+  selector:
+    app: %[1]s
+  ports:
+  - port: %[3]d
+    targetPort: %[3]d
+`, heartbeatTestServerName, namespace, heartbeatTestServerPort)
+
+	cmd := exec.Command("kubectl", "apply", "-f", "-")
+	_, err := utils.RunWithInput(cmd, testServerYAML)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to deploy Heartbeat test server")
+
+	cmd = exec.Command("kubectl", "rollout", "status", "deployment/"+heartbeatTestServerName,
+		"-n", namespace, "--timeout=2m")
+	_, err = utils.Run(cmd)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Heartbeat test server did not become ready")
+}
+
+// cleanupHeartbeatTestServer removes the cluster-local HTTP server used by Heartbeat e2e tests.
+func cleanupHeartbeatTestServer() {
+	ginkgo.By("deleting the Heartbeat test HTTP server")
+	cmd := exec.Command("kubectl", "delete", "deployment,service", heartbeatTestServerName,
+		"-n", namespace, "--ignore-not-found")
+	_, err := utils.Run(cmd)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to delete Heartbeat test server")
+}
+
+// statusEndpoint returns a cluster-local endpoint that responds with the requested HTTP status.
+func statusEndpoint(statusCode int) string {
+	return fmt.Sprintf("%s/status/%d", heartbeatTestServerBaseURL(), statusCode)
+}
+
+// delayEndpoint returns a cluster-local endpoint that waits before responding.
+func delayEndpoint(seconds int) string {
+	return fmt.Sprintf("%s/delay/%d", heartbeatTestServerBaseURL(), seconds)
+}
+
+// heartbeatTestServerBaseURL returns the in-cluster base URL for the test HTTP server.
+func heartbeatTestServerBaseURL() string {
+	return fmt.Sprintf("http://%s.%s.svc.cluster.local:%d",
+		heartbeatTestServerName,
+		namespace,
+		heartbeatTestServerPort,
+	)
 }
 
 // cleanupHeartbeatResources removes Heartbeat resources after each test.
@@ -524,9 +666,9 @@ spec:
 func createUnhealthyEndpointsSecret(secretName string) {
 	ginkgo.By("creating a secret with unhealthy endpoints")
 	cmd := exec.Command("kubectl", "create", "secret", "generic", secretName,
-		"--from-literal=targetEndpoint=https://httpbin.org/status/500",
-		"--from-literal=healthyEndpoint=https://httpbin.org/status/200",
-		"--from-literal=unhealthyEndpoint=https://httpbin.org/status/500",
+		"--from-literal=targetEndpoint="+statusEndpoint(500),
+		"--from-literal=healthyEndpoint="+statusEndpoint(200),
+		"--from-literal=unhealthyEndpoint="+statusEndpoint(500),
 		"-n", namespace)
 	_, err := utils.Run(cmd)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to create secret")
@@ -579,8 +721,8 @@ data:
   healthyEndpoint: %s
   unhealthyEndpoint: %s`, secretName, namespace,
 		base64.StdEncoding.EncodeToString([]byte("")),
-		base64.StdEncoding.EncodeToString([]byte("https://httpbin.org/status/200")),
-		base64.StdEncoding.EncodeToString([]byte("https://httpbin.org/status/200")))
+		base64.StdEncoding.EncodeToString([]byte(statusEndpoint(200))),
+		base64.StdEncoding.EncodeToString([]byte(statusEndpoint(200))))
 
 	cmd := exec.Command("kubectl", "apply", "-f", "-")
 	_, err := utils.RunWithInput(cmd, secretYAML)
@@ -611,9 +753,9 @@ func createMissingKeysSecret(secretName string) {
 
 	// First create the secret
 	cmd = exec.Command("kubectl", "create", "secret", "generic", secretName,
-		"--from-literal=targetEndpoint=https://httpbin.org/status/200",
-		"--from-literal=healthyEndpoint=https://httpbin.org/status/200",
-		"--from-literal=unhealthyEndpoint=https://httpbin.org/status/200",
+		"--from-literal=targetEndpoint="+statusEndpoint(200),
+		"--from-literal=healthyEndpoint="+statusEndpoint(200),
+		"--from-literal=unhealthyEndpoint="+statusEndpoint(200),
 		"-n", namespace)
 	_, err = utils.Run(cmd)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to create secret")
@@ -705,9 +847,9 @@ spec:
 func createMultipleRangesSecret(secretName string) {
 	ginkgo.By("creating a secret with multiple status code ranges")
 	cmd := exec.Command("kubectl", "create", "secret", "generic", secretName,
-		"--from-literal=targetEndpoint=https://httpbin.org/status/200",
-		"--from-literal=healthyEndpoint=https://httpbin.org/status/200",
-		"--from-literal=unhealthyEndpoint=https://httpbin.org/status/200",
+		"--from-literal=targetEndpoint="+statusEndpoint(200),
+		"--from-literal=healthyEndpoint="+statusEndpoint(200),
+		"--from-literal=unhealthyEndpoint="+statusEndpoint(200),
 		"-n", namespace)
 	_, err := utils.Run(cmd)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to create secret")
@@ -752,9 +894,9 @@ spec:
 func createTimeoutSecret(secretName string) {
 	ginkgo.By("creating a secret with a timeout endpoint")
 	cmd := exec.Command("kubectl", "create", "secret", "generic", secretName,
-		"--from-literal=targetEndpoint=https://httpbin.org/delay/15",
-		"--from-literal=healthyEndpoint=https://httpbin.org/status/200",
-		"--from-literal=unhealthyEndpoint=https://httpbin.org/status/200",
+		"--from-literal=targetEndpoint="+delayEndpoint(15),
+		"--from-literal=healthyEndpoint="+statusEndpoint(200),
+		"--from-literal=unhealthyEndpoint="+statusEndpoint(200),
 		"-n", namespace)
 	_, err := utils.Run(cmd)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to create secret")
@@ -874,13 +1016,17 @@ func verifyHeartbeatMessageContains(heartbeatName, expectedSubstring string) {
 //   - secretName: The name of the secret to update
 func updateSecretToReturn404(secretName string) {
 	ginkgo.By("updating the secret to return 404 status code")
+	data := map[string]string{
+		"targetEndpoint":    base64.StdEncoding.EncodeToString([]byte(statusEndpoint(404))),
+		"healthyEndpoint":   base64.StdEncoding.EncodeToString([]byte(statusEndpoint(200))),
+		"unhealthyEndpoint": base64.StdEncoding.EncodeToString([]byte(statusEndpoint(200))),
+	}
+	patch, err := json.Marshal(map[string]any{"data": data})
+	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to build secret patch")
+
 	cmd := exec.Command("kubectl", "patch", "secret", secretName,
-		"--type=merge", "-p", `{"data": {
-			"targetEndpoint": "aHR0cHM6Ly9odHRwYmluLm9yZy9zdGF0dXMvNDA0",
-			"healthyEndpoint": "aHR0cHM6Ly9odHRwYmluLm9yZy9zdGF0dXMvMjAw",
-			"unhealthyEndpoint": "aHR0cHM6Ly9odHRwYmluLm9yZy9zdGF0dXMvMjAw"
-		}}`, "-n", namespace)
-	_, err := utils.Run(cmd)
+		"--type=merge", "-p", string(patch), "-n", namespace)
+	_, err = utils.Run(cmd)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to update secret")
 }
 
