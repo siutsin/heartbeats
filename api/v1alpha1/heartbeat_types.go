@@ -194,7 +194,3 @@ type HeartbeatList struct {
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []Heartbeat `json:"items"`
 }
-
-func init() {
-	SchemeBuilder.Register(&Heartbeat{}, &HeartbeatList{})
-}
