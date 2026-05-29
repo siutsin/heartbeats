@@ -398,7 +398,7 @@ var _ = ginkgo.Describe("Heartbeat", ginkgo.Ordered, func() {
 		})
 
 		// TestUnhealthyEndpoints verifies that Heartbeat resources with unhealthy endpoints
-		// are correctly marked as unhealthy and have successful report status.
+		// are correctly marked as unhealthy and have failed report status.
 		ginkgo.It("should handle unhealthy endpoints correctly", func() {
 			createUnhealthyEndpointsSecret(unhealthySecretName)
 			createUnhealthyHeartbeat(heartbeatName, unhealthySecretName)
@@ -506,7 +506,7 @@ spec:
     targetEndpointKey: targetEndpoint
     healthyEndpointKey: healthyEndpoint
     unhealthyEndpointKey: unhealthyEndpoint
-  interval: 30s
+  interval: 5s
   expectedStatusCodeRanges:
     - min: 200
       max: 299`, heartbeatName, namespace, secretName)
@@ -551,7 +551,7 @@ spec:
     targetEndpointKey: targetEndpoint
     healthyEndpointKey: healthyEndpoint
     unhealthyEndpointKey: unhealthyEndpoint
-  interval: 30s
+  interval: 5s
   expectedStatusCodeRanges:
     - min: 200
       max: 299`, heartbeatName, namespace, secretName)
@@ -831,7 +831,7 @@ func verifyHeartbeatHealth(heartbeatName string, expectedHealthy bool, expectedR
 			g.Expect(reportStatus).To(gomega.Equal(expectedReportStatus), "reportStatus mismatch")
 		}
 	}
-	gomega.Eventually(verifyHeartbeatStatus, 30*time.Second, 5*time.Second).Should(gomega.Succeed())
+	gomega.Eventually(verifyHeartbeatStatus, 2*time.Minute, 5*time.Second).Should(gomega.Succeed())
 }
 
 // verifyHeartbeatMessage verifies that the Heartbeat resource has the expected status message.

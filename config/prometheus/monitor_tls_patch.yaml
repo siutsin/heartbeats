@@ -5,7 +5,6 @@
   value:
     # SERVICE_NAME and SERVICE_NAMESPACE will be substituted by kustomize
     serverName: SERVICE_NAME.SERVICE_NAMESPACE.svc
-    insecureSkipVerify: false
     ca:
       secret:
         name: metrics-server-cert
