@@ -31,39 +31,23 @@ and updates their status based on HTTP response codes with comprehensive error h
 - **Secure Configuration**: Store endpoint URLs securely in Kubernetes secrets
 - **Real-time Status Updates**: Detailed health information with comprehensive error messages
 - **Configurable Timeouts**: Adjustable timeout and retry settings for different network conditions
-- **Prometheus Metrics**: Built-in metrics integration for monitoring and alerting
 - **Comprehensive Error Handling**: Detailed error messages for troubleshooting
-- **Report Endpoints**: Optional reporting to healthy/unhealthy endpoints for external monitoring systems
-- **Production Ready**: Structured logging, proper error handling, and comprehensive test coverage
+- **Report Endpoints**: Reporting to healthy/unhealthy endpoints for external monitoring systems
+- **Controller-runtime metrics**: HTTPS `/metrics` on port 8443
 
 ## Installation
 
 ### Prerequisites
 
-- Kubernetes cluster (v1.16+)
+- Kubernetes cluster
 - kubectl configured to access your cluster
-- cert-manager installed (for webhook certificates)
-
-### Using Helm
 
 ```bash
-helm repo add heartbeats https://siutsin.github.io/heartbeats
-helm install heartbeats heartbeats/heartbeats-operator
+make install
+make deploy IMG=ghcr.io/siutsin/heartbeats:latest
 ```
 
-### Manual Installation
-
-1. Install the CRDs:
-
-    ```bash
-    kubectl apply -f config/crd/bases/monitoring.siutsin.com_heartbeats.yaml
-    ```
-
-2. Deploy the operator:
-
-    ```bash
-    kubectl apply -f config/default/
-    ```
+`make install` applies the CRD. `make deploy` builds `config/default` with kustomize.
 
 ## Usage
 
@@ -79,11 +63,8 @@ helm install heartbeats heartbeats/heartbeats-operator
     type: Opaque
     stringData:
       targetEndpoint: "https://api.example.com/health"
-      targetEndpointMethod: "GET" # Optional, defaults to GET
       healthyEndpoint: "https://httpbin.org/status/200"
-      healthyEndpointMethod: "POST" # Optional, defaults to GET
       unhealthyEndpoint: "https://httpbin.org/status/500"
-      unhealthyEndpointMethod: "POST" # Optional, defaults to GET
     ```
 
 2. Create a Heartbeat resource:
@@ -97,11 +78,10 @@ helm install heartbeats heartbeats/heartbeats-operator
       endpointsSecret:
         name: heartbeat-endpoints
         targetEndpointKey: targetEndpoint
-        targetEndpointMethodKey: targetEndpointMethod # Optional
         healthyEndpointKey: healthyEndpoint
-        healthyEndpointMethodKey: healthyEndpointMethod # Optional
         unhealthyEndpointKey: unhealthyEndpoint
-        unhealthyEndpointMethodKey: unhealthyEndpointMethod # Optional
+        healthyEndpointMethod: GET
+        unhealthyEndpointMethod: GET
       expectedStatusCodeRanges:
         - min: 200
           max: 299
@@ -119,11 +99,10 @@ spec:
   endpointsSecret:
     name: heartbeat-endpoints
     targetEndpointKey: targetEndpoint
-    targetEndpointMethodKey: targetEndpointMethod # Optional
     healthyEndpointKey: healthyEndpoint
-    healthyEndpointMethodKey: healthyEndpointMethod # Optional
     unhealthyEndpointKey: unhealthyEndpoint
-    unhealthyEndpointMethodKey: unhealthyEndpointMethod # Optional
+    healthyEndpointMethod: GET
+    unhealthyEndpointMethod: GET
   expectedStatusCodeRanges:
     - min: 200
       max: 299
@@ -144,16 +123,15 @@ spec:
 
 #### EndpointsSecret
 
-| Field                      | Type   | Description                                                                 | Required |
-|----------------------------|--------|-----------------------------------------------------------------------------|----------|
-| name                       | string | Name of the secret                                                          | Yes      |
-| namespace                  | string | Namespace of the secret (defaults to Heartbeat's namespace)                 | No       |
-| targetEndpointKey          | string | Key containing the target endpoint URL                                      | Yes      |
-| targetEndpointMethodKey    | string | Key containing the HTTP method for the target endpoint (e.g., GET, POST)    | No       |
-| healthyEndpointKey         | string | Key containing the healthy endpoint URL for reporting                       | Yes      |
-| healthyEndpointMethodKey   | string | Key containing the HTTP method for the healthy endpoint (e.g., GET, POST)   | No       |
-| unhealthyEndpointKey       | string | Key containing the unhealthy endpoint URL for reporting                     | Yes      |
-| unhealthyEndpointMethodKey | string | Key containing the HTTP method for the unhealthy endpoint (e.g., GET, POST) | No       |
+| Field                   | Type   | Description                                                          | Required |
+|-------------------------|--------|----------------------------------------------------------------------|----------|
+| name                    | string | Name of the secret                                                   | Yes      |
+| namespace               | string | Namespace of the secret (defaults to Heartbeat's namespace)          | No       |
+| targetEndpointKey       | string | Key containing the target endpoint URL                               | Yes      |
+| healthyEndpointKey      | string | Key containing the healthy endpoint URL for reporting                | Yes      |
+| unhealthyEndpointKey    | string | Key containing the unhealthy endpoint URL for reporting              | Yes      |
+| healthyEndpointMethod   | string | HTTP method for the healthy report (`GET`, `POST`, `PUT`, `PATCH`)   | No       |
+| unhealthyEndpointMethod | string | HTTP method for the unhealthy report (`GET`, `POST`, `PUT`, `PATCH`) | No       |
 
 #### StatusCodeRange
 
@@ -232,50 +210,17 @@ make lint-markdown
 
 ### Logging
 
-The operator uses structured logging via the `logr` interface, integrated with controller-runtime's logger.
-The `internal/logger` package is generic and only provides helpers for creating loggers with contextual information
-(such as namespace and name).
-
-**No business logic or business-specific logging helpers are present in the logger package.**
-
-All business-specific logging (such as health check results, reconciliation events, etc.) is performed inline in the
-controller and related business logic, using standard log levels and structured key-value pairs.
-
-#### Example Usage
-
-```go
-log := logger.WithRequest(ctx, "heartbeat-reconciler", req.Namespace, req.Name)
-log.V(1).Info("Starting reconciliation", "namespace", req.Namespace, "name", req.Name)
-log.Error(err, "Failed to fetch resource", "namespace", req.Namespace, "name", req.Name)
-```
-
-#### Example Log Output
-
-```json
-{
-  "time": "2025-06-27T21:58:58.917163+01:00",
-  "level": "INFO",
-  "msg": "Starting reconciliation",
-  "namespace": "default",
-  "name": "api-health"
-}
-```
+The operator uses controller-runtime zap logs.
 
 #### Log Levels
 
 - **INFO**: General operational information, health check results
 - **ERROR**: Error conditions, failed health checks, configuration issues
 - **DEBUG/V(1)**: Detailed debugging information, HTTP request details
-- **V(2)**: Verbose debugging, internal state information
 
 ## Monitoring
 
-The operator exposes Prometheus metrics at `/metrics`:
-
-- `heartbeat_health_status`: Gauge indicating endpoint health
-  (1 for healthy, 0 for unhealthy)
-- `heartbeat_http_status_code`: Gauge showing the last HTTP status code
-- `heartbeat_check_duration_seconds`: Histogram of health check durations
+The operator exposes controller-runtime metrics at `/metrics` on port 8443.
 
 ### Metrics Access
 
