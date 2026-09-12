@@ -17,29 +17,8 @@ limitations under the License.
 package v1alpha1
 
 import (
-	"fmt"
-	"regexp"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
-
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required. Any new fields you add must have json tags for the fields to be serialised.
-
-// EndpointSecretRef defines a reference to a Kubernetes secret containing endpoint information
-type EndpointSecretRef struct {
-	// Name of the secret
-	// +kubebuilder:validation:Required
-	Name string `json:"name"`
-
-	// Namespace of the secret. If empty, defaults to the same namespace as the Heartbeat resource
-	// +optional
-	Namespace string `json:"namespace,omitempty"`
-
-	// Key in the secret that contains the endpoint URL
-	// +kubebuilder:validation:Required
-	Key string `json:"key"`
-}
 
 // EndpointsSecret defines the configuration for the secret containing endpoint URLs
 type EndpointsSecret struct {
@@ -126,52 +105,6 @@ type HeartbeatStatus struct {
 
 	// ReportStatus indicates if the last report (to healthy/unhealthy endpoint) was successful
 	ReportStatus string `json:"reportStatus,omitempty"`
-}
-
-// String returns a human-readable representation of the status
-func (s HeartbeatStatus) String() string {
-	status := "Unhealthy"
-	if s.Healthy {
-		status = "Healthy"
-	}
-	return fmt.Sprintf("%s (%d): %s", status, s.LastStatus, s.Message)
-}
-
-// ValidateCreate validates the Heartbeat resource on creation
-func (h *Heartbeat) ValidateCreate() error {
-	if h.Spec.EndpointsSecret.Name == "" {
-		return fmt.Errorf("endpointsSecret.name is required")
-	}
-	if h.Spec.EndpointsSecret.TargetEndpointKey == "" {
-		return fmt.Errorf("endpointsSecret.targetEndpointKey is required")
-	}
-	if h.Spec.EndpointsSecret.HealthyEndpointKey == "" {
-		return fmt.Errorf("endpointsSecret.healthyEndpointKey is required")
-	}
-	if h.Spec.EndpointsSecret.UnhealthyEndpointKey == "" {
-		return fmt.Errorf("endpointsSecret.unhealthyEndpointKey is required")
-	}
-	if len(h.Spec.ExpectedStatusCodeRanges) == 0 {
-		return fmt.Errorf("expectedStatusCodeRanges must contain at least one range")
-	}
-	for _, r := range h.Spec.ExpectedStatusCodeRanges {
-		if r.Min < 100 || r.Min > 599 {
-			return fmt.Errorf("status code range min must be between 100 and 599")
-		}
-		if r.Max < 100 || r.Max > 599 {
-			return fmt.Errorf("status code range max must be between 100 and 599")
-		}
-		if r.Min > r.Max {
-			return fmt.Errorf("status code range min must be less than or equal to max")
-		}
-	}
-	if h.Spec.Interval == "" {
-		return fmt.Errorf("interval is required")
-	}
-	if !regexp.MustCompile(`^([0-9]+(s|m|h))$`).MatchString(h.Spec.Interval) {
-		return fmt.Errorf("interval must match pattern ^([0-9]+(s|m|h))$")
-	}
-	return nil
 }
 
 // +kubebuilder:object:root=true
