@@ -194,7 +194,6 @@ func TestHeartbeatReconciler(t *testing.T) {
 			// Create reconciler with generated mock
 			reconciler := &controller.HeartbeatReconciler{
 				Client:        client,
-				Scheme:        scheme,
 				Config:        controller.DefaultConfig(),
 				HealthChecker: mockChecker,
 				StatusUpdater: controller.NewStatusUpdater(client),
@@ -317,7 +316,6 @@ func TestConcurrentReconciliationNotBlocked(t *testing.T) {
 	// Create reconciler
 	reconciler := &controller.HeartbeatReconciler{
 		Client:        fakeClient,
-		Scheme:        scheme,
 		Config:        controller.DefaultConfig(),
 		HealthChecker: mockChecker,
 		StatusUpdater: controller.NewStatusUpdater(fakeClient),

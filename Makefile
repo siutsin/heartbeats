@@ -42,7 +42,7 @@ help: ## Display this help.
 
 .PHONY: manifests
 manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
-	$(CONTROLLER_GEN) rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
+	$(CONTROLLER_GEN) rbac:roleName=manager-role crd paths="./..." output:crd:artifacts:config=config/crd/bases
 
 .PHONY: generate
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
@@ -51,7 +51,6 @@ generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and
 .PHONY: generate-mocks
 generate-mocks: mockery ## Generate mock objects using mockery.
 	$(MOCKERY) --name=HealthChecker --dir=internal/controller --output=test/mocks --outpkg=mocks --with-expecter
-	$(MOCKERY) --name=Logger --dir=/Users/simon/go/pkg/mod/github.com/go-logr/logr@v1.4.3 --output=test/mocks --outpkg=mocks --with-expecter
 
 .PHONY: fmt
 fmt: ## Run go fmt against code.
@@ -62,12 +61,12 @@ vet: ## Run go vet against code.
 	go vet ./...
 
 .PHONY: test
-test: manifests generate fmt vet setup-envtest ## Run unit tests without race detection (local development).
-	CGO_ENABLED=0 KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test -race ./internal/... -coverprofile cover.out -coverpkg=./internal/... -covermode=atomic
+test: manifests generate fmt vet ## Run unit tests without race detection (local development).
+	go test ./internal/... -coverprofile cover.out -coverpkg=./internal/... -covermode=atomic
 
 .PHONY: test-ci
-test-ci: manifests generate fmt vet setup-envtest ## Run unit tests with race detection for CI.
-	CGO_ENABLED=1 KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test -race ./internal/... -coverprofile cover.out -coverpkg=./internal/... -covermode=atomic
+test-ci: manifests generate fmt vet ## Run unit tests with race detection for CI.
+	CGO_ENABLED=1 go test -race ./internal/... -coverprofile cover.out -coverpkg=./internal/... -covermode=atomic
 
 # Shared function for e2e test setup and teardown
 # This eliminates duplication between test-e2e and test-e2e-ci targets
@@ -98,8 +97,6 @@ define run-e2e-tests
 endef
 
 # The default setup assumes Kind is pre-installed and builds/loads the Manager Docker image locally.
-# CertManager is installed by default; skip with:
-# - CERT_MANAGER_INSTALL_SKIP=true
 .PHONY: test-e2e
 test-e2e: manifests generate fmt vet docker-build ## Run e2e tests without race detection (local development). Use LOCAL=true for fresh kind cluster.
 	$(call run-e2e-tests,0,Running e2e tests,)
@@ -170,7 +167,7 @@ docker-push: ## Push docker image with the manager.
 # - have enabled BuildKit. More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 # - be able to push the image to your registry (i.e. if you do not set a valid value via IMG=<myregistry/image:<tag>> then the export will fail)
 # To adequately provide solutions that are compatible with multiple platforms, you should consider using this option.
-PLATFORMS ?= linux/arm64,linux/amd64,linux/s390x,linux/ppc64le
+PLATFORMS ?= linux/arm64,linux/amd64
 .PHONY: docker-buildx
 docker-buildx: ## Build and push docker image for the manager for cross-platform support
 	# copy existing Dockerfile and insert --platform=${BUILDPLATFORM} into Dockerfile.cross, and preserve the original Dockerfile

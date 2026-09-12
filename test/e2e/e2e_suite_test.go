@@ -52,7 +52,6 @@ var _ = ginkgo.BeforeSuite(func() {
 	setupKindCluster()
 	buildAndLoadOperatorImage()
 	deployOperator()
-	installDependencies()
 })
 
 // AfterSuite cleans up the test environment after all tests complete.
@@ -123,23 +122,4 @@ func deployOperator() {
 		"--timeout=5m")
 	_, err = utils.Run(cmd)
 	gomega.ExpectWithOffset(1, err).NotTo(gomega.HaveOccurred(), "Failed to wait for the controller-manager to be ready")
-}
-
-// installDependencies installs required dependencies like cert-manager.
-// It checks if dependencies are already installed to avoid conflicts.
-func installDependencies() {
-	// Install CertManager if not already installed
-	ginkgo.By("checking if CertManager is already installed")
-	if !utils.IsCertManagerCRDsInstalled() {
-		msg := "Installing CertManager...\n"
-		if _, err := fmt.Fprint(ginkgo.GinkgoWriter, msg); err != nil {
-			ginkgo.Fail(fmt.Sprintf("Failed to write to GinkgoWriter: %v", err))
-		}
-		gomega.Expect(utils.InstallCertManager()).To(gomega.Succeed(), "Failed to install CertManager")
-	} else {
-		msg := "WARNING: CertManager is already installed. Skipping installation...\n"
-		if _, err := fmt.Fprint(ginkgo.GinkgoWriter, msg); err != nil {
-			ginkgo.Fail(fmt.Sprintf("Failed to write to GinkgoWriter: %v", err))
-		}
-	}
 }
