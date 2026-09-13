@@ -3,10 +3,8 @@ version: "2"
 run:
   allow-parallel-runners: true
   relative-path-mode: gomod
-  tests: true
 
 linters:
-  default: standard
   enable:
     - bodyclose # Detect leaked HTTP response bodies.
     - durationcheck # Flag invalid duration arithmetic.
@@ -63,10 +61,6 @@ formatters:
     - gofmt
     - goimports
   settings:
-    gofmt:
-      rewrite-rules:
-        - pattern: interface{}
-          replacement: any
     goimports:
       local-prefixes:
         - github.com/siutsin/heartbeats
