@@ -15,11 +15,7 @@ import (
 	heartbeats "github.com/siutsin/heartbeats/internal"
 )
 
-// setupScheme creates and returns a runtime scheme with the monitoring API types registered.
-// This is used by tests to ensure proper type handling when working with fake clients.
-//
-// Returns:
-//   - *runtime.Scheme: A scheme with monitoring API types registered
+// setupScheme returns a scheme with the monitoring API types registered.
 func setupScheme(t *testing.T) *runtime.Scheme {
 	t.Helper()
 
@@ -30,11 +26,7 @@ func setupScheme(t *testing.T) *runtime.Scheme {
 	return scheme
 }
 
-// createTestHeartbeat creates a test heartbeat with default metadata.
-// This helper function reduces code duplication in tests.
-//
-// Returns:
-//   - *monitoringv1alpha1.Heartbeat: A test heartbeat instance
+// createTestHeartbeat returns a test heartbeat with default metadata.
 func createTestHeartbeat() *monitoringv1alpha1.Heartbeat {
 	return &monitoringv1alpha1.Heartbeat{
 		ObjectMeta: metav1.ObjectMeta{
@@ -44,15 +36,7 @@ func createTestHeartbeat() *monitoringv1alpha1.Heartbeat {
 	}
 }
 
-// createTestClient creates a fake client with the test heartbeat.
-// This helper function reduces code duplication in tests.
-//
-// Parameters:
-//   - t: The test instance used for helper failures
-//   - heartbeat: The heartbeat object to include in the fake client
-//
-// Returns:
-//   - client.Client: A fake client with the heartbeat registered
+// createTestClient returns a fake client holding heartbeat.
 func createTestClient(t *testing.T, heartbeat *monitoringv1alpha1.Heartbeat) client.Client {
 	t.Helper()
 
@@ -63,8 +47,7 @@ func createTestClient(t *testing.T, heartbeat *monitoringv1alpha1.Heartbeat) cli
 		Build()
 }
 
-// TestNewStatusUpdater verifies that a new StatusUpdater can be created with the provided client.
-// This test ensures the factory function works correctly and returns a properly configured instance.
+// TestNewStatusUpdater verifies the factory returns a usable updater.
 func TestNewStatusUpdater(t *testing.T) {
 	g := gomega.NewWithT(t)
 
@@ -75,8 +58,7 @@ func TestNewStatusUpdater(t *testing.T) {
 	g.Expect(updater.Client).To(gomega.Equal(client))
 }
 
-// TestUpdateStatus_Basic tests the basic status update functionality.
-// It verifies that the core UpdateStatus method correctly sets all status fields.
+// TestUpdateStatus_Basic verifies UpdateStatus sets every status field.
 func TestUpdateStatus_Basic(t *testing.T) {
 	g := gomega.NewWithT(t)
 
@@ -104,14 +86,17 @@ func TestUpdateStatus_Basic(t *testing.T) {
 	g.Expect(heartbeat.Status.LastChecked).NotTo(gomega.BeNil())
 }
 
-// errorConditionTestCases defines the test cases for error condition status updates.
-var errorConditionTestCases = []struct {
+// errorConditionTestCase is one error-status row: the update call plus expected status.
+type errorConditionTestCase struct {
 	name            string
 	updateFunc      func(*heartbeats.StatusUpdater, context.Context, *monitoringv1alpha1.Heartbeat) error
 	expectedStatus  int
 	expectedHealthy bool
 	expectedMsg     string
-}{
+}
+
+// errorConditionTestCases defines the test cases for error condition status updates.
+var errorConditionTestCases = []errorConditionTestCase{
 	{
 		name: "update secret error status",
 		updateFunc: func(u *heartbeats.StatusUpdater, ctx context.Context, h *monitoringv1alpha1.Heartbeat) error {
@@ -159,8 +144,7 @@ var errorConditionTestCases = []struct {
 	},
 }
 
-// TestUpdateStatus_ErrorConditions tests status updates for various error conditions.
-// It verifies that different error scenarios are handled correctly with appropriate status messages.
+// TestUpdateStatus_ErrorConditions verifies error paths set the expected unhealthy status.
 func TestUpdateStatus_ErrorConditions(t *testing.T) {
 	for _, tt := range errorConditionTestCases {
 		t.Run(tt.name, func(t *testing.T) {
@@ -169,14 +153,8 @@ func TestUpdateStatus_ErrorConditions(t *testing.T) {
 	}
 }
 
-// runErrorConditionTest executes a single error condition test case.
-func runErrorConditionTest(t *testing.T, tt struct {
-	name            string
-	updateFunc      func(*heartbeats.StatusUpdater, context.Context, *monitoringv1alpha1.Heartbeat) error
-	expectedStatus  int
-	expectedHealthy bool
-	expectedMsg     string
-}) {
+// runErrorConditionTest executes one errorConditionTestCase.
+func runErrorConditionTest(t *testing.T, tt errorConditionTestCase) {
 	g := gomega.NewWithT(t)
 
 	heartbeat := createTestHeartbeat()
@@ -192,8 +170,7 @@ func runErrorConditionTest(t *testing.T, tt struct {
 	g.Expect(heartbeat.Status.LastChecked).NotTo(gomega.BeNil())
 }
 
-// TestUpdateHealthStatus_HealthyEndpoint tests health status updates for healthy endpoints.
-// It verifies that healthy endpoints are correctly marked with appropriate status messages.
+// TestUpdateHealthStatus_HealthyEndpoint verifies healthy results set success status.
 func TestUpdateHealthStatus_HealthyEndpoint(t *testing.T) {
 	g := gomega.NewWithT(t)
 
@@ -217,8 +194,7 @@ func TestUpdateHealthStatus_HealthyEndpoint(t *testing.T) {
 	g.Expect(heartbeat.Status.ReportStatus).To(gomega.Equal("Success"))
 }
 
-// TestUpdateHealthStatus_UnhealthyEndpoint tests health status updates for unhealthy endpoints.
-// It verifies that unhealthy endpoints are correctly marked with appropriate status messages.
+// TestUpdateHealthStatus_UnhealthyEndpoint verifies unhealthy results set failure status.
 func TestUpdateHealthStatus_UnhealthyEndpoint(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -266,8 +242,7 @@ func TestUpdateHealthStatus_UnhealthyEndpoint(t *testing.T) {
 	}
 }
 
-// TestUpdateHealthStatus_ReportFailure tests health status updates when reporting fails.
-// It verifies that report failures are correctly reflected in the status.
+// TestUpdateHealthStatus_ReportFailure verifies a failed report sets ReportStatus Failure.
 func TestUpdateHealthStatus_ReportFailure(t *testing.T) {
 	g := gomega.NewWithT(t)
 
@@ -291,12 +266,10 @@ func TestUpdateHealthStatus_ReportFailure(t *testing.T) {
 	g.Expect(heartbeat.Status.ReportStatus).To(gomega.Equal("Failure"))
 }
 
-// TestUpdateStatusWithClientError tests status updates when the Kubernetes client returns an error.
-// It verifies that client errors are properly handled and returned.
+// TestUpdateStatusWithClientError verifies client failures surface to the caller.
 func TestUpdateStatusWithClientError(t *testing.T) {
 	g := gomega.NewWithT(t)
 
-	// Create a fake client that always returns an error
 	errClient := &fakeErrorClient{err: errors.New("test error")}
 	updater := heartbeats.NewStatusUpdater(errClient)
 
@@ -313,19 +286,18 @@ func TestUpdateStatusWithClientError(t *testing.T) {
 	g.Expect(err.Error()).To(gomega.ContainSubstring("test error"))
 }
 
-// fakeErrorClient is a fake client that always returns an error for status updates.
-// It's used to test error handling in status update operations.
+// fakeErrorClient is a client whose status writes always fail.
 type fakeErrorClient struct {
 	client.Client
 	err error
 }
 
-// Status returns a fake status writer that always returns an error.
+// Status returns the failing writer.
 func (c *fakeErrorClient) Status() client.StatusWriter {
 	return &fakeErrorStatusWriter{err: c.err}
 }
 
-// fakeErrorStatusWriter is a fake status writer that always returns an error.
+// fakeErrorStatusWriter is a status writer that always fails.
 type fakeErrorStatusWriter struct {
 	client.StatusWriter
 	err error

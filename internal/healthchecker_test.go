@@ -32,8 +32,7 @@ const (
 	errMessageMismatch     = "error message mismatch"
 )
 
-// TestNewHealthChecker verifies that a new health checker can be created with the provided configuration.
-// This test ensures the factory function works correctly and returns a non-nil instance.
+// TestNewHealthChecker verifies the factory returns a non-nil checker.
 func TestNewHealthChecker(t *testing.T) {
 	g := gomega.NewWithT(t)
 
@@ -48,8 +47,16 @@ func TestNewHealthChecker(t *testing.T) {
 	g.Expect(checker).NotTo(gomega.BeNil(), errNilChecker)
 }
 
-// TestCheckEndpointHealth_HealthyEndpoint tests health checking for healthy endpoints.
-// It verifies that endpoints returning status codes within expected ranges are marked as healthy.
+// newTestChecker returns a checker with fast timeouts for unit tests.
+func newTestChecker() heartbeats.HealthChecker {
+	return heartbeats.NewHealthChecker(heartbeats.Config{
+		DefaultTimeout: testTimeout,
+		MaxRetries:     testMaxRetries,
+		RetryDelay:     testRetryDelay,
+	})
+}
+
+// TestCheckEndpointHealth_HealthyEndpoint verifies in-range status codes report healthy.
 func TestCheckEndpointHealth_HealthyEndpoint(t *testing.T) {
 	tests := []struct {
 		name           string
@@ -132,11 +139,7 @@ func TestCheckEndpointHealth_HealthyEndpoint(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(tt.serverBehavior))
 			defer server.Close()
 
-			checker := heartbeats.NewHealthChecker(heartbeats.Config{
-				DefaultTimeout: testTimeout,
-				MaxRetries:     testMaxRetries,
-				RetryDelay:     testRetryDelay,
-			})
+			checker := newTestChecker()
 
 			healthy, statusCode, _, err := checker.CheckEndpointHealth(
 				context.Background(),
@@ -152,8 +155,7 @@ func TestCheckEndpointHealth_HealthyEndpoint(t *testing.T) {
 	}
 }
 
-// TestCheckEndpointHealth_UnhealthyEndpoint tests health checking for unhealthy endpoints.
-// It verifies that endpoints returning status codes outside expected ranges are marked as unhealthy.
+// TestCheckEndpointHealth_UnhealthyEndpoint verifies out-of-range codes report unhealthy.
 func TestCheckEndpointHealth_UnhealthyEndpoint(t *testing.T) {
 	tests := []struct {
 		name           string
@@ -188,11 +190,7 @@ func TestCheckEndpointHealth_UnhealthyEndpoint(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(tt.serverBehavior))
 			defer server.Close()
 
-			checker := heartbeats.NewHealthChecker(heartbeats.Config{
-				DefaultTimeout: testTimeout,
-				MaxRetries:     testMaxRetries,
-				RetryDelay:     testRetryDelay,
-			})
+			checker := newTestChecker()
 
 			healthy, statusCode, _, err := checker.CheckEndpointHealth(
 				context.Background(),
@@ -208,8 +206,7 @@ func TestCheckEndpointHealth_UnhealthyEndpoint(t *testing.T) {
 	}
 }
 
-// TestCheckEndpointHealth_NetworkErrors tests health checking when network errors occur.
-// It verifies that various network failure scenarios are handled correctly with appropriate error messages.
+// TestCheckEndpointHealth_NetworkErrors verifies network failures return errors.
 func TestCheckEndpointHealth_NetworkErrors(t *testing.T) {
 	tests := []struct {
 		name           string
@@ -238,11 +235,7 @@ func TestCheckEndpointHealth_NetworkErrors(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			g := gomega.NewWithT(t)
 
-			checker := heartbeats.NewHealthChecker(heartbeats.Config{
-				DefaultTimeout: testTimeout,
-				MaxRetries:     testMaxRetries,
-				RetryDelay:     testRetryDelay,
-			})
+			checker := newTestChecker()
 
 			healthy, statusCode, _, err := checker.CheckEndpointHealth(
 				context.Background(),
@@ -259,8 +252,7 @@ func TestCheckEndpointHealth_NetworkErrors(t *testing.T) {
 	}
 }
 
-// TestCheckEndpointHealth_TimeoutErrors tests health checking when timeout errors occur.
-// It verifies that timeout scenarios are handled correctly with appropriate error messages.
+// TestCheckEndpointHealth_TimeoutErrors verifies timeouts return errors.
 func TestCheckEndpointHealth_TimeoutErrors(t *testing.T) {
 	tests := []struct {
 		name           string
@@ -299,11 +291,7 @@ func TestCheckEndpointHealth_TimeoutErrors(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(tt.serverBehavior))
 			defer server.Close()
 
-			checker := heartbeats.NewHealthChecker(heartbeats.Config{
-				DefaultTimeout: testTimeout,
-				MaxRetries:     testMaxRetries,
-				RetryDelay:     testRetryDelay,
-			})
+			checker := newTestChecker()
 
 			ctx := tt.setupContext()
 			healthy, statusCode, _, err := checker.CheckEndpointHealth(
@@ -321,9 +309,7 @@ func TestCheckEndpointHealth_TimeoutErrors(t *testing.T) {
 	}
 }
 
-// TestCheckEndpointHealth_ReportsToCorrectEndpoint tests that health status is reported to the correct endpoints.
-// It verifies that healthy endpoints report to the healthy endpoint and unhealthy endpoints report to the
-// unhealthy endpoint.
+// TestCheckEndpointHealth_ReportsToCorrectEndpoint verifies reports reach the healthy or unhealthy endpoint.
 func TestCheckEndpointHealth_ReportsToCorrectEndpoint(t *testing.T) {
 	g := gomega.NewWithT(t)
 
@@ -348,11 +334,7 @@ func TestCheckEndpointHealth_ReportsToCorrectEndpoint(t *testing.T) {
 	}))
 	defer unhealthyReportServer.Close()
 
-	checker := heartbeats.NewHealthChecker(heartbeats.Config{
-		DefaultTimeout: testTimeout,
-		MaxRetries:     testMaxRetries,
-		RetryDelay:     testRetryDelay,
-	})
+	checker := newTestChecker()
 
 	ctx := context.Background()
 	statusRanges := []monitoringv1alpha1.StatusCodeRange{{Min: 200, Max: 299}}

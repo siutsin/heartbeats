@@ -9,9 +9,7 @@ import (
 	heartbeats "github.com/siutsin/heartbeats/internal"
 )
 
-// TestDefaultConfig verifies that the default configuration returns the expected values.
-// This test ensures that the default configuration provides sensible defaults for production use.
-// It checks that all configuration fields have the correct default values.
+// TestDefaultConfig verifies production default values.
 func TestDefaultConfig(t *testing.T) {
 	g := gomega.NewWithT(t)
 
