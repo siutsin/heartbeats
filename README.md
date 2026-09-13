@@ -210,7 +210,7 @@ make lint-markdown
 
 ### Logging
 
-The operator uses controller-runtime zap logs.
+The operator logs JSON to stdout via slog.
 
 #### Log Levels
 
