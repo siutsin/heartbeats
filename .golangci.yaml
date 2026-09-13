@@ -39,6 +39,7 @@ linters:
         - name: indent-error-flow
         - name: unexported-return
           disabled: true
+        - name: use-any
     testifylint:
       enable-all: true
   exclusions:
