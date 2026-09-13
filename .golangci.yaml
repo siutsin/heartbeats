@@ -48,10 +48,6 @@ linters:
       - path: ^api/
         linters:
           - lll
-      - path: ^test/mocks/
-        linters:
-          - revive
-          - testifylint
       - path: ^test/
         linters:
           - noctx
