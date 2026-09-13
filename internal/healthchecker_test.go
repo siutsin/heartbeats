@@ -1,4 +1,4 @@
-package internal_test
+package heartbeats_test
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 	"github.com/onsi/gomega"
 
 	monitoringv1alpha1 "github.com/siutsin/heartbeats/api/v1alpha1"
-	"github.com/siutsin/heartbeats/internal"
+	heartbeats "github.com/siutsin/heartbeats/internal"
 )
 
 const (
@@ -37,14 +37,14 @@ const (
 func TestNewHealthChecker(t *testing.T) {
 	g := gomega.NewWithT(t)
 
-	config := internal.Config{
+	config := heartbeats.Config{
 		DefaultTimeout: testTimeout,
 		MaxRetries:     testMaxRetries,
 		RetryDelay:     testRetryDelay,
 		RequeueAfter:   testRequeueTime,
 	}
 
-	checker := internal.NewHealthChecker(config)
+	checker := heartbeats.NewHealthChecker(config)
 	g.Expect(checker).NotTo(gomega.BeNil(), errNilChecker)
 }
 
@@ -132,7 +132,7 @@ func TestCheckEndpointHealth_HealthyEndpoint(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(tt.serverBehavior))
 			defer server.Close()
 
-			checker := internal.NewHealthChecker(internal.Config{
+			checker := heartbeats.NewHealthChecker(heartbeats.Config{
 				DefaultTimeout: testTimeout,
 				MaxRetries:     testMaxRetries,
 				RetryDelay:     testRetryDelay,
@@ -188,7 +188,7 @@ func TestCheckEndpointHealth_UnhealthyEndpoint(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(tt.serverBehavior))
 			defer server.Close()
 
-			checker := internal.NewHealthChecker(internal.Config{
+			checker := heartbeats.NewHealthChecker(heartbeats.Config{
 				DefaultTimeout: testTimeout,
 				MaxRetries:     testMaxRetries,
 				RetryDelay:     testRetryDelay,
@@ -220,17 +220,17 @@ func TestCheckEndpointHealth_NetworkErrors(t *testing.T) {
 		{
 			name:           "invalid URL",
 			endpoint:       "http://invalid-url:invalid-port",
-			expectedErrMsg: internal.ErrFailedToCreateRequest,
+			expectedErrMsg: heartbeats.ErrFailedToCreateRequest,
 		},
 		{
 			name:           "connection refused",
 			endpoint:       "http://localhost:9999", // Assuming this port is not in use
-			expectedErrMsg: internal.ErrFailedToMakeRequest,
+			expectedErrMsg: heartbeats.ErrFailedToMakeRequest,
 		},
 		{
 			name:           "DNS error",
 			endpoint:       "http://nonexistent-domain-that-does-not-exist.com",
-			expectedErrMsg: internal.ErrFailedToMakeRequest,
+			expectedErrMsg: heartbeats.ErrFailedToMakeRequest,
 		},
 	}
 
@@ -238,7 +238,7 @@ func TestCheckEndpointHealth_NetworkErrors(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			g := gomega.NewWithT(t)
 
-			checker := internal.NewHealthChecker(internal.Config{
+			checker := heartbeats.NewHealthChecker(heartbeats.Config{
 				DefaultTimeout: testTimeout,
 				MaxRetries:     testMaxRetries,
 				RetryDelay:     testRetryDelay,
@@ -270,7 +270,7 @@ func TestCheckEndpointHealth_TimeoutErrors(t *testing.T) {
 	}{
 		{
 			name:           "server timeout",
-			expectedErrMsg: internal.ErrEndpointTimeout,
+			expectedErrMsg: heartbeats.ErrEndpointTimeout,
 			serverBehavior: func(w http.ResponseWriter, _ *http.Request) {
 				time.Sleep(2 * time.Second)
 				w.WriteHeader(http.StatusOK)
@@ -299,7 +299,7 @@ func TestCheckEndpointHealth_TimeoutErrors(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(tt.serverBehavior))
 			defer server.Close()
 
-			checker := internal.NewHealthChecker(internal.Config{
+			checker := heartbeats.NewHealthChecker(heartbeats.Config{
 				DefaultTimeout: testTimeout,
 				MaxRetries:     testMaxRetries,
 				RetryDelay:     testRetryDelay,
@@ -348,7 +348,7 @@ func TestCheckEndpointHealth_ReportsToCorrectEndpoint(t *testing.T) {
 	}))
 	defer unhealthyReportServer.Close()
 
-	checker := internal.NewHealthChecker(internal.Config{
+	checker := heartbeats.NewHealthChecker(heartbeats.Config{
 		DefaultTimeout: testTimeout,
 		MaxRetries:     testMaxRetries,
 		RetryDelay:     testRetryDelay,

@@ -34,7 +34,7 @@ import (
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
 
-	"github.com/siutsin/heartbeats/internal"
+	heartbeats "github.com/siutsin/heartbeats/internal"
 	"github.com/siutsin/heartbeats/test/utils"
 )
 
@@ -415,7 +415,7 @@ var _ = ginkgo.Describe("Heartbeat", ginkgo.Ordered, func() {
 		ginkgo.It("should create and reconcile a healthy Heartbeat", func() {
 			createHealthyHeartbeat(heartbeatName, healthySecretName)
 			verifyHeartbeatHealth(heartbeatName, true, "Success")
-			verifyHeartbeatMessage(heartbeatName, internal.ErrEndpointHealthy)
+			verifyHeartbeatMessage(heartbeatName, heartbeats.ErrEndpointHealthy)
 		})
 
 		// TestUnhealthyEndpoints verifies that Heartbeat resources with unhealthy endpoints
@@ -448,7 +448,7 @@ var _ = ginkgo.Describe("Heartbeat", ginkgo.Ordered, func() {
 			createInvalidStatusCodeHeartbeat(heartbeatName, healthySecretName)
 			verifyHeartbeatExists(heartbeatName)
 			verifyHeartbeatHealth(heartbeatName, false, "")
-			verifyHeartbeatMessage(heartbeatName, internal.ErrInvalidStatusCodeRange)
+			verifyHeartbeatMessage(heartbeatName, heartbeats.ErrInvalidStatusCodeRange)
 		})
 
 		// TestMultipleRanges verifies that Heartbeat resources with multiple status code ranges
