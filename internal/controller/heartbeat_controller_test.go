@@ -24,7 +24,6 @@ import (
 	"time"
 
 	"github.com/onsi/gomega"
-	"github.com/stretchr/testify/mock"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -34,7 +33,6 @@ import (
 
 	monitoringv1alpha1 "github.com/siutsin/heartbeats/api/v1alpha1"
 	"github.com/siutsin/heartbeats/internal/controller"
-	"github.com/siutsin/heartbeats/test/mocks"
 )
 
 const (
@@ -186,16 +184,18 @@ func TestHeartbeatReconciler(t *testing.T) {
 				WithStatusSubresource(heartbeat).
 				Build()
 
-			// Create generated mock for HealthChecker
-			mockChecker := &mocks.HealthChecker{}
-			mockChecker.On("CheckEndpointHealth", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-				Return(tt.expectHealthy, tt.statusCode, true, nil)
+			// Create fake HealthChecker with canned result
+			checker := &fakeHealthChecker{
+				check: func(context.Context, string, []monitoringv1alpha1.StatusCodeRange, monitoringv1alpha1.EndpointsSecret) (bool, int, bool, error) {
+					return tt.expectHealthy, tt.statusCode, true, nil
+				},
+			}
 
-			// Create reconciler with generated mock
+			// Create reconciler with fake HealthChecker
 			reconciler := &controller.HeartbeatReconciler{
 				Client:        client,
 				Config:        controller.DefaultConfig(),
-				HealthChecker: mockChecker,
+				HealthChecker: checker,
 				StatusUpdater: controller.NewStatusUpdater(client),
 			}
 
@@ -302,22 +302,23 @@ func TestConcurrentReconciliationNotBlocked(t *testing.T) {
 	failureDelay := 500 * time.Millisecond
 	networkErr := fmt.Errorf("dial tcp: lookup unreachable.example.com: no such host")
 
-	mockChecker := &mocks.HealthChecker{}
-	// Failing endpoint: delays then returns error (simulating timeout/retry behaviour)
-	mockChecker.On("CheckEndpointHealth", mock.Anything, "https://unreachable.example.com", mock.Anything, mock.Anything).
-		Run(func(_ mock.Arguments) {
-			time.Sleep(failureDelay)
-		}).
-		Return(false, 0, false, networkErr)
-	// Healthy endpoint: returns immediately
-	mockChecker.On("CheckEndpointHealth", mock.Anything, "https://healthy.example.com", mock.Anything, mock.Anything).
-		Return(true, http.StatusOK, true, nil)
+	checker := &fakeHealthChecker{
+		check: func(_ context.Context, endpoint string, _ []monitoringv1alpha1.StatusCodeRange, _ monitoringv1alpha1.EndpointsSecret) (bool, int, bool, error) {
+			// Failing endpoint: delays then returns error (simulating timeout/retry behaviour).
+			// Healthy endpoint: returns immediately.
+			if endpoint == "https://unreachable.example.com" {
+				time.Sleep(failureDelay)
+				return false, 0, false, networkErr
+			}
+			return true, http.StatusOK, true, nil
+		},
+	}
 
 	// Create reconciler
 	reconciler := &controller.HeartbeatReconciler{
 		Client:        fakeClient,
 		Config:        controller.DefaultConfig(),
-		HealthChecker: mockChecker,
+		HealthChecker: checker,
 		StatusUpdater: controller.NewStatusUpdater(fakeClient),
 	}
 
