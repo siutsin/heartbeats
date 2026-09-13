@@ -7,18 +7,6 @@ on:
   pull_request:
     branches:
       - master
-    paths:
-      - '**/*.go'
-      - 'go.mod'
-      - 'go.sum'
-      - '**/Dockerfile'
-      - '**/*.Dockerfile'
-      - '**/*.md'
-      - 'Makefile'
-      - 'PROJECT'
-      - 'config/**'
-      - '.mise.toml'
-      - '.github/workflows/**'
 
 jobs:
   lint:
