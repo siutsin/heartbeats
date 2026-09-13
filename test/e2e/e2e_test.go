@@ -55,6 +55,15 @@ const (
 	heartbeatTestServerPort = 8080
 )
 
+// Pinned helper images so kubelet uses IfNotPresent instead of repulling
+// :latest on every run.
+const (
+	// metricsProbeImage is the curl image used to probe the metrics endpoint.
+	metricsProbeImage = "curlimages/curl:8.11.1"
+	// heartbeatTestServerImage serves /status/:code and /delay/:seconds.
+	heartbeatTestServerImage = "python:3.13.7-alpine"
+)
+
 // ManagerTestSuite contains all the e2e tests related to the controller manager functionality.
 // This includes tests for basic manager operation, metrics endpoint availability, and controller health.
 var _ = ginkgo.Describe("Manager", ginkgo.Ordered, func() {
@@ -249,13 +258,14 @@ func createMetricsTestPod() {
 	ginkgo.By("creating the curl-metrics pod to access the metrics endpoint")
 	cmd := exec.Command("kubectl", "run", "curl-metrics", "--restart=Never",
 		"--namespace", namespace,
-		"--image=curlimages/curl:latest",
+		"--image="+metricsProbeImage,
+		"--image-pull-policy=IfNotPresent",
 		"--overrides",
 		fmt.Sprintf(`{
 			"spec": {
 				"containers": [{
 					"name": "curl",
-					"image": "curlimages/curl:latest",
+					"image": "`+metricsProbeImage+`",
 					"command": ["/bin/sh", "-c"],
 					"args": ["curl -v -k -H \"Authorization: Bearer $TOKEN\" https://%s:8443/metrics"],
 					"env": [{
@@ -289,7 +299,7 @@ func createMetricsTestPod() {
 		g.Expect(err).NotTo(gomega.HaveOccurred())
 		g.Expect(output).To(gomega.Equal("Succeeded"), "curl pod in wrong status")
 	}
-	gomega.Eventually(verifyCurlUp, 5*time.Minute, 5*time.Second).Should(gomega.Succeed())
+	gomega.Eventually(verifyCurlUp, 2*time.Minute, 2*time.Second).Should(gomega.Succeed())
 }
 
 // verifyMetricsOutput retrieves and validates the metrics output from the test pod.
@@ -454,6 +464,9 @@ var _ = ginkgo.Describe("Heartbeat", ginkgo.Ordered, func() {
 
 		// TestTimeout verifies that Heartbeat resources with timeout configurations
 		// are handled correctly and marked appropriately.
+		// The e2e manager runs with --default-timeout=2s --max-retries=1
+		// (see config/e2e/manager_args_patch.yaml), so a 5s delay exceeds
+		// the timeout without the ~32s production retry budget.
 		ginkgo.It("should handle endpoint timeout", func() {
 			createTimeoutSecret(timeoutSecretName)
 			createTimeoutHeartbeat(heartbeatName, timeoutSecretName)
@@ -503,7 +516,7 @@ spec:
           type: RuntimeDefault
       containers:
       - name: http
-        image: python:3.13-alpine
+        image: %[4]s
         imagePullPolicy: IfNotPresent
         command:
         - python
@@ -570,14 +583,14 @@ spec:
   ports:
   - port: %[3]d
     targetPort: %[3]d
-`, heartbeatTestServerName, namespace, heartbeatTestServerPort)
+`, heartbeatTestServerName, namespace, heartbeatTestServerPort, heartbeatTestServerImage)
 
 	cmd := exec.Command("kubectl", "apply", "-f", "-")
 	_, err := utils.RunWithInput(cmd, testServerYAML)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to deploy Heartbeat test server")
 
 	cmd = exec.Command("kubectl", "rollout", "status", "deployment/"+heartbeatTestServerName,
-		"-n", namespace, "--timeout=2m")
+		"-n", namespace, "--timeout=90s")
 	_, err = utils.Run(cmd)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Heartbeat test server did not become ready")
 }
@@ -648,7 +661,7 @@ spec:
     targetEndpointKey: targetEndpoint
     healthyEndpointKey: healthyEndpoint
     unhealthyEndpointKey: unhealthyEndpoint
-  interval: 5s
+  interval: 1s
   expectedStatusCodeRanges:
     - min: 200
       max: 299`, heartbeatName, namespace, secretName)
@@ -693,7 +706,7 @@ spec:
     targetEndpointKey: targetEndpoint
     healthyEndpointKey: healthyEndpoint
     unhealthyEndpointKey: unhealthyEndpoint
-  interval: 5s
+  interval: 1s
   expectedStatusCodeRanges:
     - min: 200
       max: 299`, heartbeatName, namespace, secretName)
@@ -801,7 +814,7 @@ spec:
     targetEndpointKey: targetEndpoint
     healthyEndpointKey: healthyEndpoint
     unhealthyEndpointKey: unhealthyEndpoint
-  interval: 5s
+  interval: 1s
   expectedStatusCodeRanges:
     - min: 200
       max: 299`, heartbeatName, namespace, secretName)
@@ -829,7 +842,7 @@ spec:
     targetEndpointKey: targetEndpoint
     healthyEndpointKey: healthyEndpoint
     unhealthyEndpointKey: unhealthyEndpoint
-  interval: 5s
+  interval: 1s
   expectedStatusCodeRanges:
     - min: 300
       max: 200`, heartbeatName, namespace, secretName)
@@ -874,7 +887,7 @@ spec:
     targetEndpointKey: targetEndpoint
     healthyEndpointKey: healthyEndpoint
     unhealthyEndpointKey: unhealthyEndpoint
-  interval: 5s
+  interval: 1s
   expectedStatusCodeRanges:
     - min: 200
       max: 299
@@ -894,7 +907,7 @@ spec:
 func createTimeoutSecret(secretName string) {
 	ginkgo.By("creating a secret with a timeout endpoint")
 	cmd := exec.Command("kubectl", "create", "secret", "generic", secretName,
-		"--from-literal=targetEndpoint="+delayEndpoint(15),
+		"--from-literal=targetEndpoint="+delayEndpoint(5),
 		"--from-literal=healthyEndpoint="+statusEndpoint(200),
 		"--from-literal=unhealthyEndpoint="+statusEndpoint(200),
 		"-n", namespace)
@@ -921,7 +934,7 @@ spec:
     targetEndpointKey: targetEndpoint
     healthyEndpointKey: healthyEndpoint
     unhealthyEndpointKey: unhealthyEndpoint
-  interval: 5s
+  interval: 1s
   expectedStatusCodeRanges:
     - min: 200
       max: 299`, heartbeatName, namespace, secretName)
@@ -942,7 +955,7 @@ func verifyHeartbeatExists(heartbeatName string) {
 		_, err := utils.Run(cmd)
 		g.Expect(err).NotTo(gomega.HaveOccurred())
 	}
-	gomega.Eventually(verifyHeartbeatExists, 10*time.Second, 3*time.Second).Should(gomega.Succeed())
+	gomega.Eventually(verifyHeartbeatExists, 10*time.Second, time.Second).Should(gomega.Succeed())
 }
 
 // verifyHeartbeatHealth verifies that the Heartbeat resource has the expected health status and report status.
@@ -973,7 +986,7 @@ func verifyHeartbeatHealth(heartbeatName string, expectedHealthy bool, expectedR
 			g.Expect(reportStatus).To(gomega.Equal(expectedReportStatus), "reportStatus mismatch")
 		}
 	}
-	gomega.Eventually(verifyHeartbeatStatus, 2*time.Minute, 5*time.Second).Should(gomega.Succeed())
+	gomega.Eventually(verifyHeartbeatStatus, 60*time.Second, time.Second).Should(gomega.Succeed())
 }
 
 // verifyHeartbeatMessage verifies that the Heartbeat resource has the expected status message.
@@ -1006,7 +1019,7 @@ func verifyHeartbeatMessageContains(heartbeatName, expectedSubstring string) {
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		return output
 	}
-	gomega.Eventually(check, 30*time.Second, 2*time.Second).Should(gomega.ContainSubstring(expectedSubstring))
+	gomega.Eventually(check, 15*time.Second, time.Second).Should(gomega.ContainSubstring(expectedSubstring))
 }
 
 // updateSecretToReturn404 updates the secret to return a 404 status code.
@@ -1045,5 +1058,5 @@ func verifyHeartbeatStatusPopulated(heartbeatName string) {
 		g.Expect(err).NotTo(gomega.HaveOccurred())
 		g.Expect(output).NotTo(gomega.BeEmpty(), "Heartbeat status message should be populated")
 	}
-	gomega.Eventually(verifyHeartbeatStatusPopulated, 60*time.Second, 5*time.Second).Should(gomega.Succeed())
+	gomega.Eventually(verifyHeartbeatStatusPopulated, 30*time.Second, time.Second).Should(gomega.Succeed())
 }

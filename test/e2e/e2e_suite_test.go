@@ -31,8 +31,18 @@ import (
 	"github.com/siutsin/heartbeats/test/utils"
 )
 
-// projectImage is the name of the Docker image used for testing the operator
-var projectImage = "heartbeats-operator:test"
+// projectImage is the name of the Docker image used for testing the operator.
+// It defaults to heartbeats-operator:test and can be overridden with E2E_IMG
+// so the Makefile, CI workflow, and test suite share a single tag.
+var projectImage = e2eImage()
+
+// e2eImage returns the operator image tag for e2e tests.
+func e2eImage() string {
+	if v, ok := os.LookupEnv("E2E_IMG"); ok && v != "" {
+		return v
+	}
+	return "heartbeats-operator:test"
+}
 
 // TestE2E is the main test function that runs the e2e test suite.
 // It registers the gomega fail handler with ginkgo and runs all test specs.
@@ -95,15 +105,44 @@ func setupKindCluster() {
 
 // buildAndLoadOperatorImage builds the operator Docker image and loads it into the Kind cluster.
 // This ensures that the Kind cluster has access to the latest version of the operator for testing.
+// The build is skipped when the image already exists locally (e.g. prebuilt
+// by CI with layer caching), so the image is built once, not twice.
 func buildAndLoadOperatorImage() {
-	ginkgo.By("building the manager(Operator) image")
-	cmd := exec.Command("make", "docker-build", fmt.Sprintf("IMG=%s", projectImage))
-	_, err := utils.Run(cmd)
-	gomega.ExpectWithOffset(1, err).NotTo(gomega.HaveOccurred(), "Failed to build the manager(Operator) image")
+	if !localImageExists(projectImage) {
+		ginkgo.By("building the manager(Operator) image")
+		cmd := exec.Command("make", "docker-build", fmt.Sprintf("IMG=%s", projectImage))
+		_, err := utils.Run(cmd)
+		gomega.ExpectWithOffset(1, err).NotTo(gomega.HaveOccurred(), "Failed to build the manager(Operator) image")
+	} else {
+		ginkgo.By("reusing the existing manager(Operator) image")
+	}
 
 	ginkgo.By("loading the manager(Operator) image on Kind")
-	err = utils.LoadImageToKindClusterWithName(projectImage)
+	err := utils.LoadImageToKindClusterWithName(projectImage)
 	gomega.ExpectWithOffset(1, err).NotTo(gomega.HaveOccurred(), "Failed to load the manager(Operator) image into Kind")
+}
+
+// localImageExists reports whether the image tag exists in the active
+// container runtime, mirroring the Makefile CONTAINER_TOOL priority.
+func localImageExists(name string) bool {
+	tools := []string{}
+	if v, ok := os.LookupEnv("CONTAINER_TOOL"); ok && v != "" {
+		tools = append(tools, v)
+	} else {
+		for _, tool := range []string{"docker", "podman", "container"} {
+			if _, err := exec.LookPath(tool); err == nil {
+				tools = append(tools, tool)
+				break
+			}
+		}
+	}
+	for _, tool := range tools {
+		cmd := exec.Command(tool, "image", "inspect", name)
+		if _, err := utils.Run(cmd); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 // deployOperator installs the CRDs and deploys the operator to the Kind cluster.
@@ -128,7 +167,7 @@ func deployOperator() {
 		"deployment",
 		"-n", namespace,
 		"heartbeats-operator-controller-manager",
-		"--timeout=5m")
+		"--timeout=2m")
 	_, err = utils.Run(cmd)
 	gomega.ExpectWithOffset(1, err).NotTo(gomega.HaveOccurred(), "Failed to wait for the controller-manager to be ready")
 }
