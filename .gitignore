@@ -43,12 +43,16 @@ go.work
 ehthumbs.db
 Thumbs.db
 
+# Local Apple Container e2e kubeconfig (see `make test-e2e-apple`)
+.kube-apple.yaml
+
 # Kubernetes generated files
 # Note: Do not ignore zz_generated.deepcopy.go as it's required for the operator to work
 
 # Build output
 build/
 _output/
+dist/
 
 # Temporary files
 *.log

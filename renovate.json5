@@ -2,18 +2,18 @@
   $schema: 'https://docs.renovatebot.com/renovate-schema.json',
   extends: [
     'config:best-practices',
-    ':semanticCommits'
+    ':semanticCommits',
   ],
   automerge: true,
   major: {
     automerge: false,
   },
-  minimumReleaseAge: '3 days',
-  rebaseWhen: "behind-base-branch",
+  minimumReleaseAge: '7 days',
+  rebaseWhen: 'behind-base-branch',
   packageRules: [
     {
       matchPackageNames: ['github.com/go-logr/stdr'],
-      abandonmentThreshold: null // Never mark as abandoned
-    }
-  ]
+      abandonmentThreshold: null, // Never mark as abandoned
+    },
+  ],
 }

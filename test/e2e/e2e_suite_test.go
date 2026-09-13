@@ -21,6 +21,7 @@ package e2e
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"testing"
 
@@ -58,6 +59,10 @@ var _ = ginkgo.BeforeSuite(func() {
 // It removes the Kind cluster to free up system resources.
 var _ = ginkgo.AfterSuite(func() {
 	ginkgo.By("Tearing down test environment")
+	if os.Getenv("CLUSTER_BACKEND") == "apple" {
+		ginkgo.By("leaving the Apple Container cluster running")
+		return
+	}
 	ginkgo.By("deleting Kind cluster")
 	cmd := exec.Command("kind", "delete", "cluster")
 	_, err := utils.Run(cmd)
@@ -68,6 +73,10 @@ var _ = ginkgo.AfterSuite(func() {
 // It first deletes any existing cluster to ensure a clean environment,
 // then creates a new cluster using the configuration file.
 func setupKindCluster() {
+	if os.Getenv("CLUSTER_BACKEND") == "apple" {
+		ginkgo.By("using the Apple Container cluster prepared by the Makefile")
+		return
+	}
 	ginkgo.By("deleting any existing Kind cluster")
 	cmd := exec.Command("kind", "delete", "cluster")
 	_, err := utils.Run(cmd)

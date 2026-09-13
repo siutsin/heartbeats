@@ -7,7 +7,7 @@ on:
     branches:
       - master
     paths:
-      - '**.go'
+      - '**/*.go'
       - 'go.mod'
       - 'go.sum'
       - 'Dockerfile'
@@ -38,7 +38,7 @@ jobs:
         id: bump_version
         uses: anothrNick/github-tag-action@4ed44965e0db8dab2b466a16da04aec3cc312fd8 # v1
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
           TAG_PREFIX: v
 
       - name: Set up QEMU
@@ -53,7 +53,7 @@ jobs:
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ github.token }}
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
@@ -78,9 +78,7 @@ jobs:
           make build-installer IMG="$REGISTRY/$IMAGE_NAME:$NEW_TAG"
 
       - name: Create GitHub Release and upload installer
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
-        with:
-          tag_name: ${{ steps.bump_version.outputs.new_tag }}
-          generate_release_notes: true
-          files: |
-            dist/install.yaml
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NEW_TAG: ${{ steps.bump_version.outputs.new_tag }}
+        run: gh release create "$NEW_TAG" dist/install.yaml --generate-notes

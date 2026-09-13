@@ -1,0 +1,9 @@
+{
+  "config": {
+    "default": true,
+    "MD013": {
+      "line_length": 180
+    }
+  },
+  "ignores": ["**/.cache/**", "**/.scratchpad/**", "**/node_modules/**", "bin/**"]
+}
