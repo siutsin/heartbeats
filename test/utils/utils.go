@@ -151,6 +151,15 @@ func LoadImageToKindClusterWithName(name string) error {
 		cluster = v
 	}
 
+	// Apple Container clusters load images with the container CLI.
+	if os.Getenv("CLUSTER_BACKEND") == "apple" {
+		cmd := exec.Command("container", "k8s", "load-image", "--name", cluster, name)
+		if _, err := Run(cmd); err != nil {
+			return err
+		}
+		return appleImageTag(cluster, name)
+	}
+
 	// When using podman, export image to tar and load into kind
 	if provider, ok := os.LookupEnv("KIND_EXPERIMENTAL_PROVIDER"); ok && provider == "podman" {
 		tmpFile, err := os.CreateTemp("", "kind-image-*.tar")
@@ -214,6 +223,38 @@ func LoadImageToKindClusterWithName(name string) error {
 	// For docker, use direct image loading
 	kindOptions := []string{"load", "docker-image", name, "--name", cluster}
 	cmd := exec.Command("kind", kindOptions...)
+	_, err := Run(cmd)
+	return err
+}
+
+// appleImageTag aligns the in-node image reference with the name kubelet
+// looks up, so pods start without a registry. load-image stores single-name
+// images short and prefixes multi-part names with docker.io, while kubelet
+// wants docker.io/library for single names and docker.io for multi-part ones.
+// The node name matches the cluster name for single-node clusters.
+//
+// Parameters:
+//   - cluster: The Apple Container cluster (and node) name
+//   - name: The image name to qualify
+//
+// Returns:
+//   - error: Any error that occurred during tagging
+func appleImageTag(cluster, name string) error {
+	nodeName, kubeName := name, name
+	if i := strings.Index(name, "/"); i < 0 {
+		kubeName = "docker.io/library/" + name
+	} else {
+		host := name[:i]
+		if !strings.Contains(host, ".") && !strings.Contains(host, ":") && host != "localhost" {
+			nodeName = "docker.io/" + name
+			kubeName = nodeName
+		}
+	}
+	if nodeName == kubeName {
+		return nil
+	}
+	cmd := exec.Command("container", "exec", cluster,
+		"ctr", "-n", "k8s.io", "images", "tag", nodeName, kubeName)
 	_, err := Run(cmd)
 	return err
 }
