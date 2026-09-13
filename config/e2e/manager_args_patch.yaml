@@ -11,7 +11,12 @@ spec:
         # Fast e2e tuning: short timeout with no retries keeps the timeout
         # spec (~2s) instead of the production 10s x 3 retries (~32s).
         # Requeue is shortened so status polling resolves in 1-2 cycles.
+        # NOTE: args is a full replacement list, so it must keep the base
+        # flags (--leader-elect, --health-probe-bind-address) plus the
+        # --metrics-bind-address flag added by
+        # config/default/manager_metrics_patch.yaml.
         args:
+        - --metrics-bind-address=:8443
         - --leader-elect
         - --health-probe-bind-address=:8081
         - --default-timeout=2s
