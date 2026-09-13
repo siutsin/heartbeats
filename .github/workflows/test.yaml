@@ -7,6 +7,14 @@ on:
   pull_request:
     branches:
       - master
+    paths:
+      - '**/*.go'
+      - 'go.mod'
+      - 'go.sum'
+      - 'Makefile'
+      - 'PROJECT'
+      - 'config/**'
+      - '.github/workflows/test.yaml'
 
 jobs:
   test:
