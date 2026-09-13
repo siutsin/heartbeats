@@ -14,24 +14,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package e2e contains the test suite configuration for end-to-end tests.
-// This file sets up the test environment, including creating a Kind cluster,
-// building and deploying the operator, and installing required dependencies.
+// Package e2e contains end-to-end tests for the Heartbeats operator.
+// TestMain owns the cluster lifecycle: fresh Kind cluster, operator image,
+// deploy, run, teardown.
 package e2e
 
 import (
-	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"testing"
 
-	"github.com/onsi/ginkgo/v2"
-	"github.com/onsi/gomega"
-
 	"github.com/siutsin/heartbeats/test/utils"
 )
 
-// projectImage is the name of the Docker image used for testing the operator.
+// projectImage is the operator image tag for e2e tests.
 // It defaults to heartbeats-operator:test and can be overridden with E2E_IMG
 // so the Makefile, CI workflow, and test suite share a single tag.
 var projectImage = e2eImage()
@@ -44,82 +41,69 @@ func e2eImage() string {
 	return "heartbeats-operator:test"
 }
 
-// TestE2E is the main test function that runs the e2e test suite.
-// It registers the gomega fail handler with ginkgo and runs all test specs.
-//
-// Parameters:
-//   - t: The testing.T instance for the test
-func TestE2E(t *testing.T) {
-	gomega.RegisterFailHandler(ginkgo.Fail)
-	ginkgo.RunSpecs(t, "E2E Suite")
-}
-
-// BeforeSuite sets up the complete test environment before any tests run.
-// This includes creating a Kind cluster, building the operator image,
-// deploying the operator, and installing required dependencies.
-var _ = ginkgo.BeforeSuite(func() {
-	ginkgo.By("Setting up test environment")
-
-	setupKindCluster()
-	buildAndLoadOperatorImage()
-	deployOperator()
-})
-
-// AfterSuite cleans up the test environment after all tests complete.
-// It removes the Kind cluster to free up system resources.
-var _ = ginkgo.AfterSuite(func() {
-	ginkgo.By("Tearing down test environment")
-	if os.Getenv("CLUSTER_BACKEND") == "apple" {
-		ginkgo.By("leaving the Apple Container cluster running")
-		return
+// TestMain sets up the cluster and operator once, runs all tests, then tears down.
+func TestMain(m *testing.M) {
+	if err := setupKindCluster(); err != nil {
+		log.Fatalf("setup kind cluster: %v", err)
 	}
-	ginkgo.By("deleting Kind cluster")
-	cmd := exec.Command("kind", "delete", "cluster")
-	_, err := utils.Run(cmd)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to delete Kind cluster")
-})
+	if err := buildAndLoadOperatorImage(); err != nil {
+		log.Fatalf("build operator image: %v", err)
+	}
+	if err := deployOperator(); err != nil {
+		log.Fatalf("deploy operator: %v", err)
+	}
+	code := m.Run()
+	if err := teardownKindCluster(); err != nil {
+		log.Printf("teardown kind cluster: %v", err)
+	}
+	os.Exit(code)
+}
 
 // setupKindCluster creates a fresh Kind cluster for testing.
-// It first deletes any existing cluster to ensure a clean environment,
-// then creates a new cluster using the configuration file.
-func setupKindCluster() {
+// It first deletes any existing cluster to ensure a clean environment.
+func setupKindCluster() error {
 	if os.Getenv("CLUSTER_BACKEND") == "apple" {
-		ginkgo.By("using the Apple Container cluster prepared by the Makefile")
-		return
+		log.Println("using the Apple Container cluster prepared by the Makefile")
+		return nil
 	}
-	ginkgo.By("deleting any existing Kind cluster")
+	log.Println("deleting any existing Kind cluster")
 	cmd := exec.Command("kind", "delete", "cluster")
-	_, err := utils.Run(cmd)
-	if err != nil {
-		// If the cluster doesn't exist, that's fine
-		if _, writeErr := fmt.Fprintf(ginkgo.GinkgoWriter, "No existing cluster to delete\n"); writeErr != nil {
-			ginkgo.Fail(fmt.Sprintf("Failed to write to GinkgoWriter: %v", writeErr))
-		}
+	if _, err := utils.Run(cmd); err != nil {
+		log.Println("no existing cluster to delete")
 	}
-
-	ginkgo.By("creating a new Kind cluster")
+	log.Println("creating a new Kind cluster")
 	cmd = exec.Command("kind", "create", "cluster", "--config", "test/e2e/kind-config.yaml")
-	_, err = utils.Run(cmd)
-	gomega.ExpectWithOffset(1, err).NotTo(gomega.HaveOccurred(), "Failed to create Kind cluster")
+	_, err := utils.Run(cmd)
+	return err
 }
 
-// buildAndLoadOperatorImage builds the operator Docker image and loads it into the Kind cluster.
-// This ensures that the Kind cluster has access to the latest version of the operator for testing.
+// teardownKindCluster removes the Kind cluster to free up system resources.
+func teardownKindCluster() error {
+	if os.Getenv("CLUSTER_BACKEND") == "apple" {
+		log.Println("leaving the Apple Container cluster running")
+		return nil
+	}
+	log.Println("deleting Kind cluster")
+	cmd := exec.Command("kind", "delete", "cluster")
+	_, err := utils.Run(cmd)
+	return err
+}
+
+// buildAndLoadOperatorImage builds the operator image and loads it into the Kind cluster.
 // The build is skipped when the image already exists locally (e.g. prebuilt
 // by CI with layer caching), so the image is built once, not twice.
-func buildAndLoadOperatorImage() {
+func buildAndLoadOperatorImage() error {
 	if !localImageExists(projectImage) {
-		ginkgo.By("building the manager(Operator) image")
-		cmd := exec.Command("make", "docker-build", fmt.Sprintf("IMG=%s", projectImage))
-		_, err := utils.Run(cmd)
-		gomega.ExpectWithOffset(1, err).NotTo(gomega.HaveOccurred(), "Failed to build the manager(Operator) image")
+		log.Println("building the manager(Operator) image")
+		cmd := exec.Command("make", "docker-build", "IMG="+projectImage)
+		if _, err := utils.Run(cmd); err != nil {
+			return err
+		}
 	} else {
-		ginkgo.By("reusing the existing manager(Operator) image")
+		log.Println("reusing the existing manager(Operator) image")
 	}
-
-	ginkgo.By("loading the manager(Operator) image on Kind")
-	err := utils.LoadImageToKindClusterWithName(projectImage)
-	gomega.ExpectWithOffset(1, err).NotTo(gomega.HaveOccurred(), "Failed to load the manager(Operator) image into Kind")
+	log.Println("loading the manager(Operator) image on Kind")
+	return utils.LoadImageToKindClusterWithName(projectImage)
 }
 
 // localImageExists reports whether the image tag exists in the active
@@ -147,27 +131,24 @@ func localImageExists(name string) bool {
 
 // deployOperator installs the CRDs and deploys the operator to the Kind cluster.
 // It waits for the controller-manager deployment to be ready before proceeding.
-func deployOperator() {
-	// Install CRDs
-	ginkgo.By("installing CRDs")
+func deployOperator() error {
+	log.Println("installing CRDs")
 	cmd := exec.Command("make", "install")
-	_, err := utils.Run(cmd)
-	gomega.ExpectWithOffset(1, err).NotTo(gomega.HaveOccurred(), "Failed to install CRDs")
-
-	// Deploy the controller-manager
-	ginkgo.By("deploying the controller-manager")
-	cmd = exec.Command("make", "deploy-test", fmt.Sprintf("IMG=%s", projectImage))
-	_, err = utils.Run(cmd)
-	gomega.ExpectWithOffset(1, err).NotTo(gomega.HaveOccurred(), "Failed to deploy the controller-manager")
-
-	// Wait for the controller-manager to be ready
-	ginkgo.By("waiting for the controller-manager to be ready")
+	if _, err := utils.Run(cmd); err != nil {
+		return err
+	}
+	log.Println("deploying the controller-manager")
+	cmd = exec.Command("make", "deploy-test", "IMG="+projectImage)
+	if _, err := utils.Run(cmd); err != nil {
+		return err
+	}
+	log.Println("waiting for the controller-manager to be ready")
 	cmd = exec.Command("kubectl", "wait",
 		"--for=condition=Available",
 		"deployment",
 		"-n", namespace,
 		"heartbeats-operator-controller-manager",
 		"--timeout=2m")
-	_, err = utils.Run(cmd)
-	gomega.ExpectWithOffset(1, err).NotTo(gomega.HaveOccurred(), "Failed to wait for the controller-manager to be ready")
+	_, err := utils.Run(cmd)
+	return err
 }

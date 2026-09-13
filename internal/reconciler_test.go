@@ -23,9 +23,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/onsi/gomega"
+	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -54,10 +53,9 @@ type testCase struct {
 
 // TestReconciler verifies reconcile outcomes across endpoint configurations.
 func TestReconciler(t *testing.T) {
-	g := gomega.NewWithT(t)
 	scheme := runtime.NewScheme()
-	g.Expect(monitoringv1alpha1.AddToScheme(scheme)).To(gomega.Succeed())
-	g.Expect(corev1.AddToScheme(scheme)).To(gomega.Succeed())
+	require.NoError(t, monitoringv1alpha1.AddToScheme(scheme))
+	require.NoError(t, corev1.AddToScheme(scheme))
 
 	tests := []testCase{
 		{
@@ -145,13 +143,9 @@ func TestReconciler(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			g := gomega.NewWithT(t)
-
 			heartbeat := &monitoringv1alpha1.Heartbeat{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      testName,
-					Namespace: testNamespace,
-				},
+				Name:      testName,
+				Namespace: testNamespace,
 				Spec: monitoringv1alpha1.HeartbeatSpec{
 					EndpointsSecret: monitoringv1alpha1.EndpointsSecret{
 						Name:                 secretName,
@@ -164,10 +158,8 @@ func TestReconciler(t *testing.T) {
 			}
 
 			secret := &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      secretName,
-					Namespace: testNamespace,
-				},
+				Name:      secretName,
+				Namespace: testNamespace,
 			}
 
 			tt.setup(heartbeat, secret)
@@ -192,39 +184,34 @@ func TestReconciler(t *testing.T) {
 			}
 
 			_, err := reconciler.Reconcile(context.Background(), ctrl.Request{
-				NamespacedName: types.NamespacedName{
-					Name:      testName,
-					Namespace: testNamespace,
-				},
+				Name:      testName,
+				Namespace: testNamespace,
 			})
-			g.Expect(err).NotTo(gomega.HaveOccurred())
+			require.NoError(t, err)
 
 			err = client.Get(context.Background(), types.NamespacedName{
 				Name:      testName,
 				Namespace: testNamespace,
 			}, heartbeat)
-			g.Expect(err).NotTo(gomega.HaveOccurred())
-			g.Expect(heartbeat.Status.LastStatus).To(gomega.Equal(tt.expectedStatus))
-			g.Expect(heartbeat.Status.Message).To(gomega.Equal(tt.expectedMsg))
-			g.Expect(heartbeat.Status.Healthy).To(gomega.Equal(tt.expectHealthy))
-			g.Expect(heartbeat.Status.LastChecked).NotTo(gomega.BeNil())
+			require.NoError(t, err)
+			require.Equal(t, tt.expectedStatus, heartbeat.Status.LastStatus)
+			require.Equal(t, tt.expectedMsg, heartbeat.Status.Message)
+			require.Equal(t, tt.expectHealthy, heartbeat.Status.Healthy)
+			require.NotNil(t, heartbeat.Status.LastChecked)
 		})
 	}
 }
 
 // TestConcurrentReconciliationNotBlocked verifies a slow failing check does not block a healthy one.
 func TestConcurrentReconciliationNotBlocked(t *testing.T) {
-	g := gomega.NewWithT(t)
 
 	scheme := runtime.NewScheme()
-	g.Expect(monitoringv1alpha1.AddToScheme(scheme)).To(gomega.Succeed())
-	g.Expect(corev1.AddToScheme(scheme)).To(gomega.Succeed())
+	require.NoError(t, monitoringv1alpha1.AddToScheme(scheme))
+	require.NoError(t, corev1.AddToScheme(scheme))
 
 	failingHeartbeat := &monitoringv1alpha1.Heartbeat{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "failing-heartbeat",
-			Namespace: testNamespace,
-		},
+		Name:      "failing-heartbeat",
+		Namespace: testNamespace,
 		Spec: monitoringv1alpha1.HeartbeatSpec{
 			EndpointsSecret: monitoringv1alpha1.EndpointsSecret{
 				Name:                 "failing-secret",
@@ -237,10 +224,8 @@ func TestConcurrentReconciliationNotBlocked(t *testing.T) {
 		},
 	}
 	failingSecret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "failing-secret",
-			Namespace: testNamespace,
-		},
+		Name:      "failing-secret",
+		Namespace: testNamespace,
 		Data: map[string][]byte{
 			"targetEndpoint":    []byte("https://unreachable.example.com"),
 			"healthyEndpoint":   []byte("https://healthy.example.com"),
@@ -249,10 +234,8 @@ func TestConcurrentReconciliationNotBlocked(t *testing.T) {
 	}
 
 	healthyHeartbeat := &monitoringv1alpha1.Heartbeat{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "healthy-heartbeat",
-			Namespace: testNamespace,
-		},
+		Name:      "healthy-heartbeat",
+		Namespace: testNamespace,
 		Spec: monitoringv1alpha1.HeartbeatSpec{
 			EndpointsSecret: monitoringv1alpha1.EndpointsSecret{
 				Name:                 "healthy-secret",
@@ -265,10 +248,8 @@ func TestConcurrentReconciliationNotBlocked(t *testing.T) {
 		},
 	}
 	healthySecret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "healthy-secret",
-			Namespace: testNamespace,
-		},
+		Name:      "healthy-secret",
+		Namespace: testNamespace,
 		Data: map[string][]byte{
 			"targetEndpoint":    []byte("https://healthy.example.com"),
 			"healthyEndpoint":   []byte("https://healthy.example.com"),
@@ -310,7 +291,7 @@ func TestConcurrentReconciliationNotBlocked(t *testing.T) {
 	errCh := make(chan error, 2)
 	go func() {
 		_, err := reconciler.Reconcile(context.Background(), ctrl.Request{
-			NamespacedName: types.NamespacedName{Name: "failing-heartbeat", Namespace: testNamespace},
+			Name: "failing-heartbeat", Namespace: testNamespace,
 		})
 		failingCompleted = time.Now()
 		errCh <- err
@@ -318,37 +299,37 @@ func TestConcurrentReconciliationNotBlocked(t *testing.T) {
 
 	go func() {
 		_, err := reconciler.Reconcile(context.Background(), ctrl.Request{
-			NamespacedName: types.NamespacedName{Name: "healthy-heartbeat", Namespace: testNamespace},
+			Name: "healthy-heartbeat", Namespace: testNamespace,
 		})
 		healthyCompleted = time.Now()
 		errCh <- err
 	}()
 
-	g.Expect(<-errCh).NotTo(gomega.HaveOccurred())
-	g.Expect(<-errCh).NotTo(gomega.HaveOccurred())
+	require.NoError(t, <-errCh)
+	require.NoError(t, <-errCh)
 
 	healthyDuration := healthyCompleted.Sub(startTime)
 	failingDuration := failingCompleted.Sub(startTime)
 
-	g.Expect(healthyDuration).To(gomega.BeNumerically("<", failureDelay),
+	require.Less(t, healthyDuration, failureDelay,
 		"healthy heartbeat should complete before failing endpoint times out")
 
-	g.Expect(failingDuration).To(gomega.BeNumerically(">=", failureDelay),
+	require.GreaterOrEqual(t, failingDuration, failureDelay,
 		"failing heartbeat should take at least the failure delay time")
 
 	err := fakeClient.Get(context.Background(), types.NamespacedName{
 		Name: "healthy-heartbeat", Namespace: testNamespace,
 	}, healthyHeartbeat)
-	g.Expect(err).NotTo(gomega.HaveOccurred())
-	g.Expect(healthyHeartbeat.Status.Healthy).To(gomega.BeTrue(),
+	require.NoError(t, err)
+	require.True(t, healthyHeartbeat.Status.Healthy,
 		"healthy heartbeat should be marked as healthy")
-	g.Expect(healthyHeartbeat.Status.Message).To(gomega.Equal(heartbeats.ErrEndpointHealthy))
+	require.Equal(t, heartbeats.ErrEndpointHealthy, healthyHeartbeat.Status.Message)
 
 	err = fakeClient.Get(context.Background(), types.NamespacedName{
 		Name: "failing-heartbeat", Namespace: testNamespace,
 	}, failingHeartbeat)
-	g.Expect(err).NotTo(gomega.HaveOccurred())
-	g.Expect(failingHeartbeat.Status.Healthy).To(gomega.BeFalse(),
+	require.NoError(t, err)
+	require.False(t, failingHeartbeat.Status.Healthy,
 		"failing heartbeat should be marked as unhealthy")
 }
 
@@ -409,15 +390,13 @@ func TestParseInterval(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			g := gomega.NewWithT(t)
-
 			result, err := heartbeats.ParseInterval(tt.interval)
 
 			if tt.expectError {
-				g.Expect(err).To(gomega.HaveOccurred())
+				require.Error(t, err)
 			} else {
-				g.Expect(err).NotTo(gomega.HaveOccurred())
-				g.Expect(result).To(gomega.Equal(tt.expected))
+				require.NoError(t, err)
+				require.Equal(t, tt.expected, result)
 			}
 		})
 	}

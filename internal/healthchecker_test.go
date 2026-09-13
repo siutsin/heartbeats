@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/onsi/gomega"
+	"github.com/stretchr/testify/require"
 
 	monitoringv1alpha1 "github.com/siutsin/heartbeats/api/v1alpha1"
 	heartbeats "github.com/siutsin/heartbeats/internal"
@@ -34,7 +34,6 @@ const (
 
 // TestNewHealthChecker verifies the factory returns a non-nil checker.
 func TestNewHealthChecker(t *testing.T) {
-	g := gomega.NewWithT(t)
 
 	config := heartbeats.Config{
 		DefaultTimeout: testTimeout,
@@ -44,7 +43,7 @@ func TestNewHealthChecker(t *testing.T) {
 	}
 
 	checker := heartbeats.NewHealthChecker(config)
-	g.Expect(checker).NotTo(gomega.BeNil(), errNilChecker)
+	require.NotNil(t, checker, errNilChecker)
 }
 
 // newTestChecker returns a checker with fast timeouts for unit tests.
@@ -134,8 +133,6 @@ func TestCheckEndpointHealth_HealthyEndpoint(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			g := gomega.NewWithT(t)
-
 			server := httptest.NewServer(http.HandlerFunc(tt.serverBehavior))
 			defer server.Close()
 
@@ -148,9 +145,9 @@ func TestCheckEndpointHealth_HealthyEndpoint(t *testing.T) {
 				monitoringv1alpha1.EndpointsSecret{}, // dummy for legacy tests
 			)
 
-			g.Expect(err).NotTo(gomega.HaveOccurred(), errUnexpectedError)
-			g.Expect(healthy).To(gomega.BeTrue(), errHealthyMismatch)
-			g.Expect(statusCode).To(gomega.Equal(tt.statusCode), errStatusCodeMismatch)
+			require.NoError(t, err, errUnexpectedError)
+			require.True(t, healthy, errHealthyMismatch)
+			require.Equal(t, tt.statusCode, statusCode, errStatusCodeMismatch)
 		})
 	}
 }
@@ -185,8 +182,6 @@ func TestCheckEndpointHealth_UnhealthyEndpoint(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			g := gomega.NewWithT(t)
-
 			server := httptest.NewServer(http.HandlerFunc(tt.serverBehavior))
 			defer server.Close()
 
@@ -199,9 +194,9 @@ func TestCheckEndpointHealth_UnhealthyEndpoint(t *testing.T) {
 				monitoringv1alpha1.EndpointsSecret{}, // dummy for legacy tests
 			)
 
-			g.Expect(err).NotTo(gomega.HaveOccurred(), errUnexpectedError)
-			g.Expect(healthy).To(gomega.BeFalse(), errHealthyMismatch)
-			g.Expect(statusCode).To(gomega.Equal(tt.statusCode), errStatusCodeMismatch)
+			require.NoError(t, err, errUnexpectedError)
+			require.False(t, healthy, errHealthyMismatch)
+			require.Equal(t, tt.statusCode, statusCode, errStatusCodeMismatch)
 		})
 	}
 }
@@ -233,8 +228,6 @@ func TestCheckEndpointHealth_NetworkErrors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			g := gomega.NewWithT(t)
-
 			checker := newTestChecker()
 
 			healthy, statusCode, _, err := checker.CheckEndpointHealth(
@@ -244,10 +237,10 @@ func TestCheckEndpointHealth_NetworkErrors(t *testing.T) {
 				monitoringv1alpha1.EndpointsSecret{}, // dummy for legacy tests
 			)
 
-			g.Expect(err).To(gomega.HaveOccurred(), errExpectedError)
-			g.Expect(err.Error()).To(gomega.ContainSubstring(tt.expectedErrMsg), errMessageMismatch)
-			g.Expect(healthy).To(gomega.BeFalse(), errHealthyMismatch)
-			g.Expect(statusCode).To(gomega.Equal(0), errStatusCodeMismatch)
+			require.Error(t, err, errExpectedError)
+			require.Contains(t, err.Error(), tt.expectedErrMsg, errMessageMismatch)
+			require.False(t, healthy, errHealthyMismatch)
+			require.Equal(t, 0, statusCode, errStatusCodeMismatch)
 		})
 	}
 }
@@ -286,8 +279,6 @@ func TestCheckEndpointHealth_TimeoutErrors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			g := gomega.NewWithT(t)
-
 			server := httptest.NewServer(http.HandlerFunc(tt.serverBehavior))
 			defer server.Close()
 
@@ -301,17 +292,16 @@ func TestCheckEndpointHealth_TimeoutErrors(t *testing.T) {
 				monitoringv1alpha1.EndpointsSecret{}, // dummy for legacy tests
 			)
 
-			g.Expect(err).To(gomega.HaveOccurred(), errExpectedError)
-			g.Expect(err.Error()).To(gomega.ContainSubstring(tt.expectedErrMsg), errMessageMismatch)
-			g.Expect(healthy).To(gomega.BeFalse(), errHealthyMismatch)
-			g.Expect(statusCode).To(gomega.Equal(0), errStatusCodeMismatch)
+			require.Error(t, err, errExpectedError)
+			require.Contains(t, err.Error(), tt.expectedErrMsg, errMessageMismatch)
+			require.False(t, healthy, errHealthyMismatch)
+			require.Equal(t, 0, statusCode, errStatusCodeMismatch)
 		})
 	}
 }
 
 // TestCheckEndpointHealth_ReportsToCorrectEndpoint verifies reports reach the healthy or unhealthy endpoint.
 func TestCheckEndpointHealth_ReportsToCorrectEndpoint(t *testing.T) {
-	g := gomega.NewWithT(t)
 
 	// Set up a server to act as the main endpoint
 	mainStatus := http.StatusOK
@@ -347,15 +337,15 @@ func TestCheckEndpointHealth_ReportsToCorrectEndpoint(t *testing.T) {
 	reportCalled = ""
 	mainStatus = http.StatusOK
 	healthy, _, _, err := checker.CheckEndpointHealth(ctx, mainServer.URL, statusRanges, endpointsSecret)
-	g.Expect(err).NotTo(gomega.HaveOccurred())
-	g.Expect(healthy).To(gomega.BeTrue())
-	g.Eventually(func() string { return reportCalled }).Should(gomega.Equal("healthy"))
+	require.NoError(t, err)
+	require.True(t, healthy)
+	require.Equal(t, "healthy", reportCalled)
 
 	// Test unhealthy case
 	reportCalled = ""
 	mainStatus = http.StatusInternalServerError
 	healthy, _, _, err = checker.CheckEndpointHealth(ctx, mainServer.URL, statusRanges, endpointsSecret)
-	g.Expect(err).NotTo(gomega.HaveOccurred())
-	g.Expect(healthy).To(gomega.BeFalse())
-	g.Eventually(func() string { return reportCalled }).Should(gomega.Equal("unhealthy"))
+	require.NoError(t, err)
+	require.False(t, healthy)
+	require.Equal(t, "unhealthy", reportCalled)
 }

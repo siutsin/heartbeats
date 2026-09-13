@@ -19,15 +19,17 @@ package main
 import (
 	"crypto/tls"
 	"flag"
+	"fmt"
+	"log/slog"
 	"os"
 	"time"
 
+	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
@@ -45,6 +47,23 @@ func init() {
 	utilruntime.Must(monitoringv1alpha1.AddToScheme(scheme))
 }
 
+func parseLogLevel(level string) slog.Level {
+	switch level {
+	case "debug":
+		return slog.LevelDebug
+	case "info":
+		return slog.LevelInfo
+	case "warn":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	default:
+		fmt.Fprintln(os.Stderr, "invalid --log-level:", level)
+		os.Exit(1)
+		return slog.LevelInfo
+	}
+}
+
 func main() {
 	var metricsAddr string
 	var enableLeaderElection bool
@@ -55,6 +74,7 @@ func main() {
 	var maxRetries int
 	var retryDelay time.Duration
 	var requeueAfter time.Duration
+	var logLevel string
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0",
 		"The address the metrics endpoint binds to. "+
@@ -72,12 +92,12 @@ func main() {
 	flag.IntVar(&maxRetries, "max-retries", 3, "Maximum number of retries for failed requests")
 	flag.DurationVar(&retryDelay, "retry-delay", time.Second, "Delay between retries")
 	flag.DurationVar(&requeueAfter, "requeue-after", 5*time.Second, "Time to wait before requeuing failed reconciliations")
-
-	opts := zap.Options{Development: false}
-	opts.BindFlags(flag.CommandLine)
+	flag.StringVar(&logLevel, "log-level", "info", "Log level: debug, info, warn, or error")
 	flag.Parse()
 
-	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+	ctrl.SetLogger(logr.FromSlogHandler(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: parseLogLevel(logLevel),
+	})))
 
 	var tlsOpts []func(*tls.Config)
 	if !enableHTTP2 {

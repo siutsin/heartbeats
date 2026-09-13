@@ -3,17 +3,16 @@ version: "2"
 run:
   allow-parallel-runners: true
   relative-path-mode: gomod
-  tests: true
 
 linters:
-  default: standard
   enable:
     - bodyclose # Detect leaked HTTP response bodies.
-    - copyloopvar # Catch unsafe loop variable copies and captures.
     - durationcheck # Flag invalid duration arithmetic.
     - errorlint # Enforce modern wrapped-error handling.
-    - ginkgolinter # Enforce correct Ginkgo and Gomega test usage.
+    - gosec # Catch common security issues.
     - misspell # Catch common spelling mistakes using UK English.
+    - modernize # Suggest modern stdlib constructs.
+    - nilerr # Catch returning nil with a non-nil error.
     - noctx # Require context-aware APIs in non-test code paths.
     - nolintlint # Keep nolint directives specific and justified.
     - revive # Provide configurable, actively maintained style and correctness checks.
@@ -40,25 +39,19 @@ linters:
         - name: indent-error-flow
         - name: unexported-return
           disabled: true
+        - name: use-any
     testifylint:
       enable-all: true
   exclusions:
     generated: lax
     rules:
-      - path: ^api/
-        linters:
-          - lll
       - path: ^test/
         linters:
+          - gosec
           - noctx
       - path: ^cmd/main\.go$
         linters:
           - misspell
-      - path: (.+)_test\.go
-        linters:
-          - dupl
-          - goconst
-          - lll
     paths:
       - third_party$
       - builtin$
@@ -69,10 +62,6 @@ formatters:
     - gofmt
     - goimports
   settings:
-    gofmt:
-      rewrite-rules:
-        - pattern: interface{}
-          replacement: any
     goimports:
       local-prefixes:
         - github.com/siutsin/heartbeats

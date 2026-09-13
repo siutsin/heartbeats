@@ -1,66 +1,17 @@
 # Agent Instructions
 
-This document provides directives for LLM agents working on this project.
+## Rules
 
-## Core Principles
+- Fix root causes. Never suppress warnings or hide errors.
+- Keep files small with docstrings on new functions.
+- Follow the Google Go Style Guide.
+- Prefer values and small consumer-defined interfaces. Use pointers only to mutate.
+- Design for eventual consistency. Minimise API load.
+- Reuse the error variables in internal/errors.go. No hardcoded strings.
+- Unit tests: table-driven, black-box, under 10 seconds. Fakes and httptest servers only, no real network calls.
 
-### Error Handling Policy
+## Verify
 
-- **Fix, Never Suppress**: Always fix the root cause of warnings and errors. Never suppress or hide them (e.g., no output filtering or disabling lint rules).
+Run these, all must pass:
 
-## Development Standards
-
-### Go Best Practices
-
-- **Standards**: Follow the [Google Go Style Guide](https://google.github.io/styleguide/go/guide.html) as the primary coding style.
-- **Reference**: Use [Go by Example](https://gobyexample.com/) for idiomatic patterns and [Go Documentation](https://go.dev/doc/) for the latest language features.
-- **Project Layout**: Adhere to the [Standard Go Project Layout](https://github.com/golang-standards/project-layout).
-- **Error Messages**: Declare as pre-formatted variables and reuse across tests; avoid hardcoded strings.
-- **File Structure**: Split code into small files, each doing one specific job.
-- **Pointers vs Values**: Prioritise interfaces and concrete values. Use pointers only when modifying the original object.
-- **Concurrency**: Use channels for orchestration, mutexes for state. Avoid goroutine leaks by ensuring termination.
-- **Interfaces**: Define interfaces where they are used (consumer-defined). Keep them small.
-
-### Kubernetes Operator Standards
-
-- **Design**: Create idiomatic Go code leveraging K8s patterns (CRDs, finalizers). Design for declarative configuration and eventual consistency.
-- **Best Practices**:
-  - Use exponential backoff for retries.
-  - Use informers and work queues efficiently.
-  - Implement proper RBAC and health checks.
-  - Use structured logging with appropriate verbosity.
-- **Performance**: Minimise API load (watch predicates), use caching/indexing, and implement rate limiting.
-- **Production Readiness**: Handle graceful shutdown/leader election, expose Prometheus metrics, and plan for upgrades.
-
-### Documentation Requirements
-
-- Add docstrings to all new functions/classes and update them when signatures change.
-
-## Testing & Verification
-
-### Testing Protocol
-
-- **Linting**: Ensure code passes `go fmt`, `go vet`, and `golangci-lint`.
-- **Verification**: Run `make lint-markdown-fix && make lint && make test && make test-e2e LOCAL=true`.
-- **Requirement**: Verify all checks pass before completion.
-
-### Unit Test Standards
-
-- **Timeouts**: Must be < 10 seconds.
-- **Approach**: Use table testing and blackbox testing (`_test` suffix).
-- **Mocks**: Use mocks to avoid actual network requests.
-
-### Integration & E2E Testing
-
-- **Ephemeral Stack**: Launch an ephemeral stack to verify the application behaves correctly in a production-like environment.
-
-## Tool Selection
-
-Use the appropriate tool for each file type:
-
-| File Type | Tool           | Purpose                   |
-| --------- | -------------- | ------------------------- |
-| YAML      | `yq`           | Parsing and modification  |
-| Markdown  | `markdownlint` | Linting and validation    |
-| Go        | `go`           | Language toolchain        |
-| Makefile  | `make`         | Build and test automation |
+`make lint-markdown-fix && make lint && make test && make test-e2e`
