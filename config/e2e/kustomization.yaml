@@ -6,3 +6,7 @@ patches:
   - path: manager_image_pull_policy_patch.yaml
     target:
       kind: Deployment
+  # Short timeouts/retries so the timeout spec takes ~2s not ~32s
+  - path: manager_args_patch.yaml
+    target:
+      kind: Deployment

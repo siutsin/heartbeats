@@ -71,46 +71,44 @@ test: manifests generate fmt vet ## Run unit tests without race detection (local
 test-ci: manifests generate fmt vet ## Run unit tests with race detection for CI.
 	CGO_ENABLED=1 go test -race ./internal/... -coverprofile cover.out -coverpkg=./internal/... -covermode=atomic
 
-# Shared function for e2e test setup and teardown
-# This eliminates duplication between test-e2e and test-e2e-ci targets
+# E2E_IMG is the operator image tag used by e2e tests.
+# The CI workflow prebuilds this tag with layer caching; BeforeSuite skips
+# the build when the image already exists locally, so there is a single build.
+E2E_IMG ?= heartbeats-operator:test
+
+# Shared function for e2e test setup and teardown.
+# Kind cluster lifecycle is owned by BeforeSuite in test/e2e/e2e_suite_test.go,
+# so this only runs the specs and reverts kustomization mutations even on failure.
 # Parameters:
-#   $1 - CGO_ENABLED value (0 for local, 1 for CI)
-#   $2 - Test description for logging
-#   $3 - Additional go test flags (e.g., -race for CI)
+#   $1 - Test description for logging
 define run-e2e-tests
 	@command -v $(KIND) >/dev/null 2>&1 || { \
 		echo "Kind is not installed. Please install Kind manually."; \
 		exit 1; \
 	}
-	@if [ -z "$(KIND_PROVIDER)" ]; then \
+	@if [ -z "$(KIND_PROVIDER)" ] && [ "$${CLUSTER_BACKEND:-kind}" != "apple" ]; then \
 		echo "E2E needs Docker or Podman to back kind. Apple Container builds images but cannot back kind clusters. Cover e2e in CI."; \
 		exit 1; \
 	fi
-	@if [ "$(LOCAL)" = "true" ]; then \
-		kind delete cluster --name kind; \
-		kind create cluster --name kind --config test/e2e/kind-config.yaml; \
-	fi
-	@echo "$(2)..."
+	@echo "$(1)..."
 	@if [ "$(CONTAINER_TOOL)" = "podman" ]; then \
-		KIND_EXPERIMENTAL_PROVIDER=podman CGO_ENABLED=$(1) go test $(3) ./test/e2e/ -v -ginkgo.v; \
+		KIND_EXPERIMENTAL_PROVIDER=podman CGO_ENABLED=0 E2E_IMG=$(E2E_IMG) go test ./test/e2e/ -v -ginkgo.v; test_status=$$?; \
 	else \
-		CGO_ENABLED=$(1) go test $(3) ./test/e2e/ -v -ginkgo.v; \
-	fi
-	@echo "Reverting kustomization file changes..."
-	@git checkout config/manager/kustomization.yaml
-	@if [ "$(LOCAL)" = "true" ]; then \
-		kind delete cluster --name kind; \
-	fi
+		CGO_ENABLED=0 E2E_IMG=$(E2E_IMG) go test ./test/e2e/ -v -ginkgo.v; test_status=$$?; \
+	fi; \
+	echo "Reverting kustomization file changes..."; \
+	git checkout config/manager/kustomization.yaml; \
+	exit $$test_status
 endef
 
 # The default setup assumes Kind is pre-installed and builds/loads the Manager Docker image locally.
 .PHONY: test-e2e
-test-e2e: manifests generate fmt vet docker-build ## Run e2e tests without race detection (local development). Use LOCAL=true for fresh kind cluster.
-	$(call run-e2e-tests,0,Running e2e tests,)
+test-e2e: kustomize ## Run e2e tests (local development). BeforeSuite creates a fresh kind cluster and builds the image when missing.
+	$(call run-e2e-tests,Running e2e tests)
 
 .PHONY: test-e2e-ci
-test-e2e-ci: manifests generate fmt vet docker-build ## Run e2e tests with race detection for CI. Use LOCAL=true for fresh kind cluster.
-	$(call run-e2e-tests,1,Running e2e tests with race detection,-race)
+test-e2e-ci: kustomize ## Run e2e tests in CI. Lean: no fmt/vet/race (covered by lint and test jobs); workflow prebuilds E2E_IMG with cache.
+	$(call run-e2e-tests,Running e2e tests)
 
 APPLE_CLUSTER ?= e2e-apple
 APPLE_KUBECONFIG ?= $(CURDIR)/.kube-apple.yaml
@@ -126,7 +124,7 @@ test-e2e-apple: manifests generate fmt vet ## Run e2e tests on Apple Container (
 	container k8s write-config --name $(APPLE_CLUSTER) --kubeconfig $(APPLE_KUBECONFIG)
 	kubectl config use-context $(APPLE_CLUSTER) --kubeconfig $(APPLE_KUBECONFIG)
 	CLUSTER_BACKEND=apple KIND_CLUSTER=$(APPLE_CLUSTER) KUBECONFIG=$(APPLE_KUBECONFIG) \
-	CONTAINER_TOOL=$(CONTAINER_TOOL) CGO_ENABLED=0 go test ./test/e2e/ -v -ginkgo.v || test_status=$$?; \
+	CONTAINER_TOOL=$(CONTAINER_TOOL) E2E_IMG=$(E2E_IMG) CGO_ENABLED=0 go test ./test/e2e/ -v -ginkgo.v || test_status=$$?; \
 	git checkout -- config/manager/kustomization.yaml; \
 	exit $${test_status:-0}
 
