@@ -72,7 +72,7 @@ test-ci: manifests generate fmt vet ## Run unit tests with race detection for CI
 	CGO_ENABLED=1 go test -race ./internal/... -coverprofile cover.out -coverpkg=./internal/... -covermode=atomic
 
 # E2E_IMG is the operator image tag used by e2e tests.
-# The CI workflow prebuilds this tag with layer caching; BeforeSuite skips
+# The CI workflow prebuilds this tag; BeforeSuite skips
 # the build when the image already exists locally, so there is a single build.
 E2E_IMG ?= heartbeats-operator:test
 

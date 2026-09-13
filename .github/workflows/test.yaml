@@ -15,7 +15,9 @@ on:
       - 'PROJECT'
       - 'config/**'
       - '.mise.toml'
-      - '.github/workflows/test.yaml'
+      - '**/Dockerfile'
+      - '**/*.md'
+      - '.github/workflows/**'
 
 jobs:
   test:
