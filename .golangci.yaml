@@ -12,7 +12,6 @@ linters:
     - copyloopvar # Catch unsafe loop variable copies and captures.
     - durationcheck # Flag invalid duration arithmetic.
     - errorlint # Enforce modern wrapped-error handling.
-    - ginkgolinter # Enforce correct Ginkgo and Gomega test usage.
     - misspell # Catch common spelling mistakes using UK English.
     - noctx # Require context-aware APIs in non-test code paths.
     - nolintlint # Keep nolint directives specific and justified.

@@ -88,9 +88,9 @@ define run-e2e-tests
 	fi
 	@echo "$(1)..."
 	@if [ "$(CONTAINER_TOOL)" = "podman" ]; then \
-		KIND_EXPERIMENTAL_PROVIDER=podman CGO_ENABLED=0 E2E_IMG=$(E2E_IMG) go test ./test/e2e/ -v -ginkgo.v; test_status=$$?; \
+		KIND_EXPERIMENTAL_PROVIDER=podman CGO_ENABLED=0 E2E_IMG=$(E2E_IMG) go test ./test/e2e/ -v; test_status=$$?; \
 	else \
-		CGO_ENABLED=0 E2E_IMG=$(E2E_IMG) go test ./test/e2e/ -v -ginkgo.v; test_status=$$?; \
+		CGO_ENABLED=0 E2E_IMG=$(E2E_IMG) go test ./test/e2e/ -v; test_status=$$?; \
 	fi; \
 	echo "Reverting kustomization file changes..."; \
 	git checkout config/manager/kustomization.yaml; \
@@ -120,7 +120,7 @@ test-e2e-apple: manifests generate fmt vet ## Run e2e tests on Apple Container (
 	container k8s write-config --name $(APPLE_CLUSTER) --kubeconfig $(APPLE_KUBECONFIG)
 	kubectl config use-context $(APPLE_CLUSTER) --kubeconfig $(APPLE_KUBECONFIG)
 	CLUSTER_BACKEND=apple KIND_CLUSTER=$(APPLE_CLUSTER) KUBECONFIG=$(APPLE_KUBECONFIG) \
-	CONTAINER_TOOL=$(CONTAINER_TOOL) E2E_IMG=$(E2E_IMG) CGO_ENABLED=0 go test ./test/e2e/ -v -ginkgo.v || test_status=$$?; \
+	CONTAINER_TOOL=$(CONTAINER_TOOL) E2E_IMG=$(E2E_IMG) CGO_ENABLED=0 go test ./test/e2e/ -v || test_status=$$?; \
 	git checkout -- config/manager/kustomization.yaml; \
 	exit $${test_status:-0}
 
