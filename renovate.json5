@@ -15,9 +15,5 @@
       matchPackageNames: ['github.com/go-logr/stdr'],
       abandonmentThreshold: null, // Never mark as abandoned
     },
-    {
-      matchPackageNames: ['anothrNick/github-tag-action'],
-      abandonmentThreshold: null, // Still works; no maintained fork to move to
-    },
   ],
 }
