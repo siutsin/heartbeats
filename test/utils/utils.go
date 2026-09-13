@@ -26,14 +26,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-
-	ginkgo "github.com/onsi/ginkgo/v2"
 )
 
-// writeGinkgoWriterf writes formatted output to the Ginkgo writer.
-func writeGinkgoWriterf(format string, args ...any) {
-	//nolint:errcheck // GinkgoWriter failures are not actionable and must not affect test control flow.
-	_, _ = fmt.Fprintf(ginkgo.GinkgoWriter, format, args...)
+// logf writes formatted output to stdout without changing test control flow.
+func logf(format string, args ...any) {
+	fmt.Printf(format, args...)
 }
 
 // warnError logs a warning message when an error occurs during cleanup operations.
@@ -42,7 +39,7 @@ func writeGinkgoWriterf(format string, args ...any) {
 // Parameters:
 //   - err: The error to log as a warning
 func warnError(err error) {
-	writeGinkgoWriterf("warning: %v\n", err)
+	logf("warning: %v\n", err)
 }
 
 // Run executes the provided command within the project context.
@@ -63,12 +60,12 @@ func Run(cmd *exec.Cmd) (string, error) {
 	cmd.Dir = dir
 
 	if chdirErr := os.Chdir(cmd.Dir); chdirErr != nil {
-		writeGinkgoWriterf("chdir dir: %s\n", chdirErr)
+		logf("chdir dir: %s\n", chdirErr)
 	}
 
 	cmd.Env = append(os.Environ(), "GO111MODULE=on")
 	command := strings.Join(cmd.Args, " ")
-	writeGinkgoWriterf("running: %s\n", command)
+	logf("running: %s\n", command)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return string(output), fmt.Errorf("%s failed with error: (%w) %s", command, err, string(output))
@@ -95,12 +92,12 @@ func RunWithInput(cmd *exec.Cmd, input string) (string, error) {
 	cmd.Dir = dir
 
 	if chdirErr := os.Chdir(cmd.Dir); chdirErr != nil {
-		writeGinkgoWriterf("chdir dir: %s\n", chdirErr)
+		logf("chdir dir: %s\n", chdirErr)
 	}
 
 	cmd.Env = append(os.Environ(), "GO111MODULE=on")
 	command := strings.Join(cmd.Args, " ")
-	writeGinkgoWriterf("running: %s\n", command)
+	logf("running: %s\n", command)
 
 	// Set up pipes for stdin, stdout, and stderr
 	stdin, err := cmd.StdinPipe()

@@ -28,11 +28,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"testing"
 	"time"
 
 	"github.com/goccy/go-yaml"
-	ginkgo "github.com/onsi/ginkgo/v2"
-	gomega "github.com/onsi/gomega"
+	"github.com/stretchr/testify/require"
 
 	heartbeats "github.com/siutsin/heartbeats/internal"
 	"github.com/siutsin/heartbeats/test/utils"
@@ -64,58 +64,46 @@ const (
 	heartbeatTestServerImage = "python:3.13.7-alpine"
 )
 
-// ManagerTestSuite contains all the e2e tests related to the controller manager functionality.
-// This includes tests for basic manager operation, metrics endpoint availability, and controller health.
-var _ = ginkgo.Describe("Manager", ginkgo.Ordered, func() {
+// TestManager covers controller manager operation: pod running and metrics endpoint.
+func TestManager(t *testing.T) {
 	var controllerPodName string
 
-	// BeforeAll sets up the test environment before any manager tests run.
-	// It configures the namespace with restricted security policy for testing.
-	ginkgo.BeforeAll(func() {
-		ginkgo.By("labelling the namespace to enforce the restricted security policy")
-		cmd := exec.Command("kubectl", "label", "--overwrite", "ns", namespace,
-			"pod-security.kubernetes.io/enforce=restricted")
-		_, err := utils.Run(cmd)
-		gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to label namespace with restricted policy")
-	})
+	t.Log("labelling the namespace to enforce the restricted security policy")
+	cmd := exec.Command("kubectl", "label", "--overwrite", "ns", namespace,
+		"pod-security.kubernetes.io/enforce=restricted")
+	_, err := utils.Run(cmd)
+	require.NoError(t, err, "Failed to label namespace with restricted policy")
 
-	// AfterEach collects diagnostic information when tests fail.
-	// It fetches logs, events, and pod descriptions to help with debugging.
-	ginkgo.AfterEach(func() {
-		specReport := ginkgo.CurrentSpecReport()
-		if specReport.Failed() {
-			collectManagerDiagnosticInfo(controllerPodName)
-		}
-	})
-
-	ginkgo.Context("Manager", func() {
-		// TestManagerBasicOperation verifies that the controller manager pod is running correctly.
-		// It checks that the pod exists, is in Running state, and has the expected name format.
-		ginkgo.It("should run successfully", func() {
-			ginkgo.By("validating that the controller-manager pod is running as expected")
-			verifyControllerUp := func(g gomega.Gomega) {
-				controllerPodName = getControllerPodName(g)
-				verifyPodStatus(g, controllerPodName)
+	// verifyControllerUp polls until the controller-manager pod exists and runs.
+	t.Run("controller running", func(t *testing.T) {
+		t.Log("validating that the controller-manager pod is running as expected")
+		require.Eventually(t, func() bool {
+			name, err := tryControllerPodName()
+			if err != nil {
+				return false
 			}
-			gomega.Eventually(verifyControllerUp).Should(gomega.Succeed())
-		})
-
-		// TestMetricsEndpoint verifies that the metrics endpoint is properly configured and accessible.
-		// It sets up RBAC, creates a test pod to access metrics, and validates the metrics output.
-		ginkgo.It("should ensure the metrics endpoint is serving metrics", func() {
-			setupMetricsAccess()
-			verifyMetricsAvailability(controllerPodName)
-			createMetricsTestPod()
-			verifyMetricsOutput()
-		})
+			controllerPodName = name
+			return podRunning(name)
+		}, 60*time.Second, time.Second)
 	})
-})
 
-// writeDiagnosticf writes diagnostic output to the Ginkgo writer without changing test control flow.
+	// verifyMetricsEndpoint polls the metrics service, then a curl pod checks output.
+	t.Run("metrics endpoint", func(t *testing.T) {
+		setupMetricsAccess(t)
+		verifyMetricsAvailability(t, controllerPodName)
+		createMetricsTestPod(t)
+		verifyMetricsOutput(t)
+	})
+
+	if t.Failed() {
+		collectManagerDiagnosticInfo(t, controllerPodName)
+	}
+}
+
+// writeDiagnosticf writes diagnostic output to stdout without changing test control flow.
 // Diagnostic logging should never mask the original test failure it is trying to explain.
 func writeDiagnosticf(format string, args ...any) {
-	//nolint:errcheck // Diagnostic writer failures are not actionable and must not replace the original test failure.
-	_, _ = fmt.Fprintf(ginkgo.GinkgoWriter, format, args...)
+	fmt.Printf(format, args...)
 }
 
 // collectManagerDiagnosticInfo gathers logs, events, and pod descriptions for debugging failed manager tests.
@@ -123,8 +111,8 @@ func writeDiagnosticf(format string, args ...any) {
 //
 // Parameters:
 //   - controllerPodName: The name of the controller pod to collect logs from
-func collectManagerDiagnosticInfo(controllerPodName string) {
-	ginkgo.By("Fetching controller manager pod logs")
+func collectManagerDiagnosticInfo(t *testing.T, controllerPodName string) {
+	t.Log("Fetching controller manager pod logs")
 	cmd := exec.Command("kubectl", "logs", controllerPodName, "-n", namespace)
 	controllerLogs, err := utils.Run(cmd)
 	if err == nil {
@@ -133,7 +121,7 @@ func collectManagerDiagnosticInfo(controllerPodName string) {
 		writeDiagnosticf("Failed to get Controller logs: %s", err)
 	}
 
-	ginkgo.By("Fetching Kubernetes events")
+	t.Log("Fetching Kubernetes events")
 	cmd = exec.Command("kubectl", "get", "events", "-n", namespace, "--sort-by=.lastTimestamp")
 	eventsOutput, err := utils.Run(cmd)
 	if err == nil {
@@ -142,7 +130,7 @@ func collectManagerDiagnosticInfo(controllerPodName string) {
 		writeDiagnosticf("Failed to get Kubernetes events: %s", err)
 	}
 
-	ginkgo.By("Fetching curl-metrics logs")
+	t.Log("Fetching curl-metrics logs")
 	cmd = exec.Command("kubectl", "logs", "curl-metrics", "-n", namespace)
 	metricsOutput, err := utils.Run(cmd)
 	if err == nil {
@@ -151,7 +139,7 @@ func collectManagerDiagnosticInfo(controllerPodName string) {
 		writeDiagnosticf("Failed to get curl-metrics logs: %s", err)
 	}
 
-	ginkgo.By("Fetching controller manager pod description")
+	t.Log("Fetching controller manager pod description")
 	cmd = exec.Command("kubectl", "describe", "pod", controllerPodName, "-n", namespace)
 	podDescription, err := utils.Run(cmd)
 	if err == nil {
@@ -161,15 +149,9 @@ func collectManagerDiagnosticInfo(controllerPodName string) {
 	}
 }
 
-// getControllerPodName retrieves the name of the controller manager pod.
-// It filters for pods with the controller-manager label and returns the first active pod.
-//
-// Parameters:
-//   - g: The gomega assertion interface for test assertions
-//
-// Returns:
-//   - string: The name of the controller pod
-func getControllerPodName(g gomega.Gomega) string {
+// tryControllerPodName returns the controller-manager pod name when exactly one
+// active controller-manager pod exists.
+func tryControllerPodName() (string, error) {
 	cmd := exec.Command("kubectl", "get",
 		"pods", "-l", "control-plane=controller-manager",
 		"-o", "go-template={{ range .items }}"+
@@ -180,40 +162,39 @@ func getControllerPodName(g gomega.Gomega) string {
 	)
 
 	podOutput, err := utils.Run(cmd)
-	g.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to retrieve controller-manager pod information")
+	if err != nil {
+		return "", err
+	}
 	podNames := utils.GetNonEmptyLines(podOutput)
-	g.Expect(podNames).To(gomega.HaveLen(1), "expected 1 controller pod running")
-	controllerPodName := podNames[0]
-	g.Expect(controllerPodName).To(gomega.ContainSubstring("controller-manager"))
-	return controllerPodName
+	if len(podNames) != 1 {
+		return "", fmt.Errorf("expected 1 controller pod running, got %d", len(podNames))
+	}
+	if !strings.Contains(podNames[0], "controller-manager") {
+		return "", fmt.Errorf("unexpected controller pod name %q", podNames[0])
+	}
+	return podNames[0], nil
 }
 
-// verifyPodStatus checks that the specified pod is in Running state.
-// It validates the pod's phase to ensure it's healthy and operational.
-//
-// Parameters:
-//   - g: The gomega assertion interface for test assertions
-//   - podName: The name of the pod to verify
-func verifyPodStatus(g gomega.Gomega, podName string) {
+// podRunning reports whether the pod is in Running state.
+func podRunning(podName string) bool {
 	cmd := exec.Command("kubectl", "get",
 		"pods", podName, "-o", "jsonpath={.status.phase}",
 		"-n", namespace,
 	)
 	output, err := utils.Run(cmd)
-	g.Expect(err).NotTo(gomega.HaveOccurred())
-	g.Expect(output).To(gomega.Equal("Running"), "Incorrect controller-manager pod status")
+	return err == nil && output == "Running"
 }
 
 // setupMetricsAccess creates the necessary RBAC resources to access the metrics endpoint.
 // It creates a ClusterRoleBinding that allows the service account to read metrics.
-func setupMetricsAccess() {
-	ginkgo.By("creating a ClusterRoleBinding for the service account to allow access to metrics")
+func setupMetricsAccess(t *testing.T) {
+	t.Log("creating a ClusterRoleBinding for the service account to allow access to metrics")
 	cmd := exec.Command("kubectl", "create", "clusterrolebinding", metricsRoleBindingName,
 		"--clusterrole=heartbeats-operator-metrics-reader",
 		fmt.Sprintf("--serviceaccount=%s:%s", namespace, serviceAccountName),
 	)
 	_, err := utils.Run(cmd)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to create ClusterRoleBinding")
+	require.NoError(t, err, "Failed to create ClusterRoleBinding")
 }
 
 // verifyMetricsAvailability checks that the metrics service exists and is properly configured.
@@ -221,41 +202,36 @@ func setupMetricsAccess() {
 //
 // Parameters:
 //   - controllerPodName: The name of the controller pod to check logs from
-func verifyMetricsAvailability(controllerPodName string) {
-	ginkgo.By("validating that the metrics service is available")
+func verifyMetricsAvailability(t *testing.T, controllerPodName string) {
+	t.Log("validating that the metrics service is available")
 	cmd := exec.Command("kubectl", "get", "service", metricsServiceName, "-n", namespace)
 	_, err := utils.Run(cmd)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Metrics service should exist")
+	require.NoError(t, err, "Metrics service should exist")
 
-	ginkgo.By("waiting for the metrics endpoint to be ready")
-	verifyMetricsEndpointReady := func(g gomega.Gomega) {
+	t.Log("waiting for the metrics endpoint to be ready")
+	require.Eventually(t, func() bool {
 		cmd := exec.Command("kubectl", "get", "endpoints", metricsServiceName, "-n", namespace)
 		output, err := utils.Run(cmd)
-		g.Expect(err).NotTo(gomega.HaveOccurred())
-		g.Expect(output).To(gomega.ContainSubstring("8443"), "Metrics endpoint is not ready")
-	}
-	gomega.Eventually(verifyMetricsEndpointReady).Should(gomega.Succeed())
+		return err == nil && strings.Contains(output, "8443")
+	}, 60*time.Second, time.Second, "Metrics endpoint is not ready")
 
-	ginkgo.By("verifying that the controller manager is serving the metrics server")
-	verifyMetricsServerStarted := func(g gomega.Gomega) {
+	t.Log("verifying that the controller manager is serving the metrics server")
+	require.Eventually(t, func() bool {
 		cmd := exec.Command("kubectl", "logs", controllerPodName, "-n", namespace)
 		output, err := utils.Run(cmd)
-		g.Expect(err).NotTo(gomega.HaveOccurred())
-		g.Expect(output).To(gomega.ContainSubstring("Serving metrics server"),
-			"Metrics server not yet started")
-	}
-	gomega.Eventually(verifyMetricsServerStarted).Should(gomega.Succeed())
+		return err == nil && strings.Contains(output, "Serving metrics server")
+	}, 60*time.Second, time.Second, "Metrics server not yet started")
 }
 
 // createMetricsTestPod creates a temporary pod to test access to the metrics endpoint.
 // It uses a curl image to make requests to the metrics service and verify connectivity.
-func createMetricsTestPod() {
-	ginkgo.By("getting the service account token")
+func createMetricsTestPod(t *testing.T) {
+	t.Log("getting the service account token")
 	token, err := serviceAccountToken()
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
-	gomega.Expect(token).NotTo(gomega.BeEmpty())
+	require.NoError(t, err)
+	require.NotEmpty(t, token)
 
-	ginkgo.By("creating the curl-metrics pod to access the metrics endpoint")
+	t.Log("creating the curl-metrics pod to access the metrics endpoint")
 	cmd := exec.Command("kubectl", "run", "curl-metrics", "--restart=Never",
 		"--namespace", namespace,
 		"--image="+metricsProbeImage,
@@ -288,28 +264,24 @@ func createMetricsTestPod() {
 			}
 		}`, metricsServiceName, token, serviceAccountName))
 	_, err = utils.Run(cmd)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to create curl-metrics pod")
+	require.NoError(t, err, "Failed to create curl-metrics pod")
 
-	ginkgo.By("waiting for the curl-metrics pod to complete")
-	verifyCurlUp := func(g gomega.Gomega) {
+	t.Log("waiting for the curl-metrics pod to complete")
+	require.Eventually(t, func() bool {
 		cmd = exec.Command("kubectl", "get", "pods", "curl-metrics",
 			"-o", "jsonpath={.status.phase}",
 			"-n", namespace)
 		output, err := utils.Run(cmd)
-		g.Expect(err).NotTo(gomega.HaveOccurred())
-		g.Expect(output).To(gomega.Equal("Succeeded"), "curl pod in wrong status")
-	}
-	gomega.Eventually(verifyCurlUp, 2*time.Minute, 2*time.Second).Should(gomega.Succeed())
+		return err == nil && output == "Succeeded"
+	}, 2*time.Minute, 2*time.Second, "curl pod in wrong status")
 }
 
 // verifyMetricsOutput retrieves and validates the metrics output from the test pod.
 // It checks that the metrics contain expected controller runtime metrics.
-func verifyMetricsOutput() {
-	ginkgo.By("getting the metrics by checking curl-metrics logs")
-	metricsOutput := getMetricsOutput()
-	gomega.Expect(metricsOutput).To(gomega.ContainSubstring(
-		"controller_runtime_reconcile_total",
-	))
+func verifyMetricsOutput(t *testing.T) {
+	t.Log("getting the metrics by checking curl-metrics logs")
+	metricsOutput := getMetricsOutput(t)
+	require.Contains(t, metricsOutput, "controller_runtime_reconcile_total")
 }
 
 // serviceAccountToken returns a token for the specified service account in the given namespace.
@@ -328,11 +300,6 @@ func serviceAccountToken() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer func() {
-		if removeErr := os.Remove(tokenRequestFile); removeErr != nil {
-			ginkgo.Fail(fmt.Sprintf("Failed to remove token request file: %v", removeErr))
-		}
-	}()
 
 	// Execute kubectl command to create the token
 	cmd := exec.Command("kubectl", "create", "--raw", fmt.Sprintf(
@@ -356,16 +323,19 @@ func serviceAccountToken() (string, error) {
 		return "", fmt.Errorf("received empty token")
 	}
 
+	if err := os.Remove(tokenRequestFile); err != nil {
+		return "", fmt.Errorf("failed to remove token request file: %w", err)
+	}
 	return token.Status.Token, nil
 }
 
 // getMetricsOutput retrieves and returns the logs from the curl pod used to access the metrics endpoint.
-func getMetricsOutput() string {
-	ginkgo.By("getting the curl-metrics logs")
+func getMetricsOutput(t *testing.T) string {
+	t.Log("getting the curl-metrics logs")
 	cmd := exec.Command("kubectl", "logs", "curl-metrics", "-n", namespace)
 	metricsOutput, err := utils.Run(cmd)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to retrieve logs from curl pod")
-	gomega.Expect(metricsOutput).To(gomega.ContainSubstring("< HTTP/1.1 200 OK"))
+	require.NoError(t, err, "Failed to retrieve logs from curl pod")
+	require.Contains(t, metricsOutput, "< HTTP/1.1 200 OK")
 	return metricsOutput
 }
 
@@ -377,9 +347,9 @@ type tokenRequest struct {
 	} `json:"status"`
 }
 
-// HeartbeatTestSuite contains all the e2e tests related to Heartbeat resource functionality.
-// This includes tests for health checking, status updates, and various endpoint configurations.
-var _ = ginkgo.Describe("Heartbeat", ginkgo.Ordered, func() {
+// TestHeartbeat covers Heartbeat reconciliation: healthy, unhealthy, invalid,
+// missing keys, status ranges, and timeouts.
+func TestHeartbeat(t *testing.T) {
 	// Test constants for Heartbeat resources
 	const (
 		heartbeatName            = "test-heartbeat"
@@ -391,110 +361,92 @@ var _ = ginkgo.Describe("Heartbeat", ginkgo.Ordered, func() {
 		timeoutSecretName        = "heartbeat-endpoints-timeout"
 	)
 
-	// BeforeAll sets up the test environment for Heartbeat tests.
-	// It creates the initial healthy endpoints secret used by multiple tests.
-	ginkgo.BeforeAll(func() {
-		deployHeartbeatTestServer()
-		createInitialHealthySecret(healthySecretName)
+	deployHeartbeatTestServer(t)
+	createInitialHealthySecret(t, healthySecretName)
+	t.Cleanup(func() { cleanupHeartbeatTestServer(t) })
+
+	// clean isolates subtests the way AfterEach did.
+	clean := func(t *testing.T) {
+		t.Cleanup(func() { cleanupHeartbeatResources(t, heartbeatName) })
+	}
+
+	t.Run("healthy heartbeat", func(t *testing.T) {
+		clean(t)
+		createHealthyHeartbeat(t, heartbeatName, healthySecretName)
+		verifyHeartbeatHealth(t, heartbeatName, true, "Success")
+		verifyHeartbeatMessage(t, heartbeatName, heartbeats.ErrEndpointHealthy)
 	})
 
-	// AfterAll cleans up shared Heartbeat test infrastructure.
-	ginkgo.AfterAll(func() {
-		cleanupHeartbeatTestServer()
+	t.Run("unhealthy endpoints", func(t *testing.T) {
+		clean(t)
+		createUnhealthyEndpointsSecret(t, unhealthySecretName)
+		createUnhealthyHeartbeat(t, heartbeatName, unhealthySecretName)
+		verifyHeartbeatHealth(t, heartbeatName+"-unhealthy", false, "Failure")
 	})
 
-	// AfterEach cleans up Heartbeat resources after each test.
-	// It ensures that test resources are properly removed to avoid interference.
-	ginkgo.AfterEach(func() {
-		cleanupHeartbeatResources(heartbeatName)
+	t.Run("invalid endpoint URLs", func(t *testing.T) {
+		clean(t)
+		createInvalidEndpointSecret(t, invalidSecretName)
+		verifySecretExists(t, invalidSecretName)
 	})
 
-	ginkgo.Context("Health Check", func() {
-		// TestHealthyEndpoints verifies that Heartbeat resources with healthy endpoints
-		// are correctly marked as healthy and have successful report status.
-		ginkgo.It("should create and reconcile a healthy Heartbeat", func() {
-			createHealthyHeartbeat(heartbeatName, healthySecretName)
-			verifyHeartbeatHealth(heartbeatName, true, "Success")
-			verifyHeartbeatMessage(heartbeatName, heartbeats.ErrEndpointHealthy)
-		})
-
-		// TestUnhealthyEndpoints verifies that Heartbeat resources with unhealthy endpoints
-		// are correctly marked as unhealthy and have failed report status.
-		ginkgo.It("should handle unhealthy endpoints correctly", func() {
-			createUnhealthyEndpointsSecret(unhealthySecretName)
-			createUnhealthyHeartbeat(heartbeatName, unhealthySecretName)
-			verifyHeartbeatHealth(heartbeatName+"-unhealthy", false, "Failure")
-		})
-
-		// TestInvalidEndpointURLs verifies that Heartbeat resources with invalid endpoint URLs
-		// are handled gracefully and marked as unhealthy.
-		ginkgo.It("should handle invalid endpoint URLs", func() {
-			createInvalidEndpointSecret(invalidSecretName)
-			verifySecretExists(invalidSecretName)
-		})
-
-		// TestMissingKeys verifies that Heartbeat resources with missing required keys
-		// are handled gracefully and marked as unhealthy.
-		ginkgo.It("should handle missing secret keys", func() {
-			createMissingKeysSecret(missingKeysSecretName)
-			createMissingKeysHeartbeat(heartbeatName, missingKeysSecretName)
-			verifyHeartbeatHealth(heartbeatName, false, "")
-			verifyHeartbeatMessageContains(heartbeatName, "missing required key")
-		})
-
-		// TestInvalidStatusCodes verifies that Heartbeat resources with invalid status code ranges
-		// are handled gracefully and marked as unhealthy.
-		ginkgo.It("should handle invalid status code ranges", func() {
-			createInvalidStatusCodeHeartbeat(heartbeatName, healthySecretName)
-			verifyHeartbeatExists(heartbeatName)
-			verifyHeartbeatHealth(heartbeatName, false, "")
-			verifyHeartbeatMessage(heartbeatName, heartbeats.ErrInvalidStatusCodeRange)
-		})
-
-		// TestMultipleRanges verifies that Heartbeat resources with multiple status code ranges
-		// are processed correctly and marked appropriately.
-		ginkgo.It("should handle multiple status code ranges", func() {
-			createMultipleRangesSecret(multipleRangesSecretName)
-			createMultipleRangesHeartbeat(heartbeatName, multipleRangesSecretName)
-			verifyHeartbeatExists(heartbeatName)
-			verifyHeartbeatHealth(heartbeatName, true, "")
-			updateSecretToReturn404(multipleRangesSecretName)
-			verifyHeartbeatHealth(heartbeatName, true, "")
-		})
-
-		// TestTimeout verifies that Heartbeat resources with timeout configurations
-		// are handled correctly and marked appropriately.
-		// The e2e manager runs with --default-timeout=2s --max-retries=1
-		// (see config/e2e/manager_args_patch.yaml), so a 5s delay exceeds
-		// the timeout without the ~32s production retry budget.
-		ginkgo.It("should handle endpoint timeout", func() {
-			createTimeoutSecret(timeoutSecretName)
-			createTimeoutHeartbeat(heartbeatName, timeoutSecretName)
-			verifyHeartbeatExists(heartbeatName)
-			verifyHeartbeatStatusPopulated(heartbeatName)
-		})
+	t.Run("missing secret keys", func(t *testing.T) {
+		clean(t)
+		createMissingKeysSecret(t, missingKeysSecretName)
+		createMissingKeysHeartbeat(t, heartbeatName, missingKeysSecretName)
+		verifyHeartbeatHealth(t, heartbeatName, false, "")
+		verifyHeartbeatMessageContains(t, heartbeatName, "missing required key")
 	})
-})
+
+	t.Run("invalid status code ranges", func(t *testing.T) {
+		clean(t)
+		createInvalidStatusCodeHeartbeat(t, heartbeatName, healthySecretName)
+		verifyHeartbeatExists(t, heartbeatName)
+		verifyHeartbeatHealth(t, heartbeatName, false, "")
+		verifyHeartbeatMessage(t, heartbeatName, heartbeats.ErrInvalidStatusCodeRange)
+	})
+
+	t.Run("multiple status code ranges", func(t *testing.T) {
+		clean(t)
+		createMultipleRangesSecret(t, multipleRangesSecretName)
+		createMultipleRangesHeartbeat(t, heartbeatName, multipleRangesSecretName)
+		verifyHeartbeatExists(t, heartbeatName)
+		verifyHeartbeatHealth(t, heartbeatName, true, "")
+		updateSecretToReturn404(t, multipleRangesSecretName)
+		verifyHeartbeatHealth(t, heartbeatName, true, "")
+	})
+
+	// The e2e manager runs with --default-timeout=2s --max-retries=1
+	// (see config/e2e/manager_args_patch.yaml), so a 5s delay exceeds
+	// the timeout without the ~32s production retry budget.
+	t.Run("endpoint timeout", func(t *testing.T) {
+		clean(t)
+		createTimeoutSecret(t, timeoutSecretName)
+		createTimeoutHeartbeat(t, heartbeatName, timeoutSecretName)
+		verifyHeartbeatExists(t, heartbeatName)
+		verifyHeartbeatStatusPopulated(t, heartbeatName)
+	})
+}
 
 // createInitialHealthySecret creates the initial healthy endpoints secret used by multiple tests.
 // This secret is created once in BeforeAll to avoid duplication across tests.
 //
 // Parameters:
 //   - secretName: The name of the secret to create
-func createInitialHealthySecret(secretName string) {
-	ginkgo.By("creating a secret with endpoints")
+func createInitialHealthySecret(t *testing.T, secretName string) {
+	t.Log("creating a secret with endpoints")
 	cmd := exec.Command("kubectl", "create", "secret", "generic", secretName,
 		"--from-literal=targetEndpoint="+statusEndpoint(200),
 		"--from-literal=healthyEndpoint="+statusEndpoint(200),
 		"--from-literal=unhealthyEndpoint="+statusEndpoint(200),
 		"-n", namespace)
 	_, err := utils.Run(cmd)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to create secret")
+	require.NoError(t, err, "Failed to create secret")
 }
 
 // deployHeartbeatTestServer deploys a cluster-local HTTP server used by Heartbeat e2e tests.
-func deployHeartbeatTestServer() {
-	ginkgo.By("deploying the Heartbeat test HTTP server")
+func deployHeartbeatTestServer(t *testing.T) {
+	t.Log("deploying the Heartbeat test HTTP server")
 	testServerYAML := fmt.Sprintf(`apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -587,21 +539,21 @@ spec:
 
 	cmd := exec.Command("kubectl", "apply", "-f", "-")
 	_, err := utils.RunWithInput(cmd, testServerYAML)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to deploy Heartbeat test server")
+	require.NoError(t, err, "Failed to deploy Heartbeat test server")
 
 	cmd = exec.Command("kubectl", "rollout", "status", "deployment/"+heartbeatTestServerName,
 		"-n", namespace, "--timeout=90s")
 	_, err = utils.Run(cmd)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Heartbeat test server did not become ready")
+	require.NoError(t, err, "Heartbeat test server did not become ready")
 }
 
 // cleanupHeartbeatTestServer removes the cluster-local HTTP server used by Heartbeat e2e tests.
-func cleanupHeartbeatTestServer() {
-	ginkgo.By("deleting the Heartbeat test HTTP server")
+func cleanupHeartbeatTestServer(t *testing.T) {
+	t.Log("deleting the Heartbeat test HTTP server")
 	cmd := exec.Command("kubectl", "delete", "deployment,service", heartbeatTestServerName,
 		"-n", namespace, "--ignore-not-found")
 	_, err := utils.Run(cmd)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to delete Heartbeat test server")
+	require.NoError(t, err, "Failed to delete Heartbeat test server")
 }
 
 // statusEndpoint returns a cluster-local endpoint that responds with the requested HTTP status.
@@ -628,17 +580,17 @@ func heartbeatTestServerBaseURL() string {
 //
 // Parameters:
 //   - heartbeatName: The base name of the Heartbeat resource to clean up
-func cleanupHeartbeatResources(heartbeatName string) {
-	ginkgo.By("deleting the Heartbeat resources")
+func cleanupHeartbeatResources(t *testing.T, heartbeatName string) {
+	t.Log("deleting the Heartbeat resources")
 	cmd := exec.Command("kubectl", "delete", "heartbeat", heartbeatName, "-n", namespace)
 	output, err := utils.Run(cmd)
 	if err != nil && !strings.Contains(output, "NotFound") {
-		gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to delete healthy heartbeat")
+		require.NoError(t, err, "Failed to delete healthy heartbeat")
 	}
 	cmd = exec.Command("kubectl", "delete", "heartbeat", heartbeatName+"-unhealthy", "-n", namespace)
 	output, err = utils.Run(cmd)
 	if err != nil && !strings.Contains(output, "NotFound") {
-		gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to delete unhealthy heartbeat")
+		require.NoError(t, err, "Failed to delete unhealthy heartbeat")
 	}
 }
 
@@ -648,8 +600,8 @@ func cleanupHeartbeatResources(heartbeatName string) {
 // Parameters:
 //   - heartbeatName: The name of the Heartbeat resource to create
 //   - secretName: The name of the secret containing endpoint configurations
-func createHealthyHeartbeat(heartbeatName, secretName string) {
-	ginkgo.By("creating a Heartbeat resource")
+func createHealthyHeartbeat(t *testing.T, heartbeatName, secretName string) {
+	t.Log("creating a Heartbeat resource")
 	heartbeatYAML := fmt.Sprintf(`apiVersion: monitoring.siutsin.com/v1alpha1
 kind: Heartbeat
 metadata:
@@ -668,7 +620,7 @@ spec:
 
 	cmd := exec.Command("kubectl", "apply", "-f", "-")
 	_, err := utils.RunWithInput(cmd, heartbeatYAML)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to create Heartbeat")
+	require.NoError(t, err, "Failed to create Heartbeat")
 }
 
 // createUnhealthyEndpointsSecret creates a secret with unhealthy endpoint configurations.
@@ -676,15 +628,15 @@ spec:
 //
 // Parameters:
 //   - secretName: The name of the secret to create
-func createUnhealthyEndpointsSecret(secretName string) {
-	ginkgo.By("creating a secret with unhealthy endpoints")
+func createUnhealthyEndpointsSecret(t *testing.T, secretName string) {
+	t.Log("creating a secret with unhealthy endpoints")
 	cmd := exec.Command("kubectl", "create", "secret", "generic", secretName,
 		"--from-literal=targetEndpoint="+statusEndpoint(500),
 		"--from-literal=healthyEndpoint="+statusEndpoint(200),
 		"--from-literal=unhealthyEndpoint="+statusEndpoint(500),
 		"-n", namespace)
 	_, err := utils.Run(cmd)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to create secret")
+	require.NoError(t, err, "Failed to create secret")
 }
 
 // createUnhealthyHeartbeat creates a Heartbeat resource that references the unhealthy endpoints secret.
@@ -693,8 +645,8 @@ func createUnhealthyEndpointsSecret(secretName string) {
 // Parameters:
 //   - heartbeatName: The name of the Heartbeat resource to create
 //   - secretName: The name of the secret containing endpoint configurations
-func createUnhealthyHeartbeat(heartbeatName, secretName string) {
-	ginkgo.By("creating a Heartbeat resource")
+func createUnhealthyHeartbeat(t *testing.T, heartbeatName, secretName string) {
+	t.Log("creating a Heartbeat resource")
 	heartbeatYAML := fmt.Sprintf(`apiVersion: monitoring.siutsin.com/v1alpha1
 kind: Heartbeat
 metadata:
@@ -713,7 +665,7 @@ spec:
 
 	cmd := exec.Command("kubectl", "apply", "-f", "-")
 	_, err := utils.RunWithInput(cmd, heartbeatYAML)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to create Heartbeat")
+	require.NoError(t, err, "Failed to create Heartbeat")
 }
 
 // createInvalidEndpointSecret creates a secret with an invalid endpoint URL.
@@ -721,8 +673,8 @@ spec:
 //
 // Parameters:
 //   - secretName: The name of the secret to create
-func createInvalidEndpointSecret(secretName string) {
-	ginkgo.By("creating a secret with an invalid endpoint URL")
+func createInvalidEndpointSecret(t *testing.T, secretName string) {
+	t.Log("creating a secret with an invalid endpoint URL")
 	secretYAML := fmt.Sprintf(`apiVersion: v1
 kind: Secret
 metadata:
@@ -739,18 +691,18 @@ data:
 
 	cmd := exec.Command("kubectl", "apply", "-f", "-")
 	_, err := utils.RunWithInput(cmd, secretYAML)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to create secret")
+	require.NoError(t, err, "Failed to create secret")
 }
 
 // verifySecretExists checks that the specified secret was created successfully.
 //
 // Parameters:
 //   - secretName: The name of the secret to verify
-func verifySecretExists(secretName string) {
-	ginkgo.By("verifying the secret was created")
+func verifySecretExists(t *testing.T, secretName string) {
+	t.Log("verifying the secret was created")
 	cmd := exec.Command("kubectl", "get", "secret", secretName, "-n", namespace)
 	_, err := utils.Run(cmd)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Secret not found")
+	require.NoError(t, err, "Secret not found")
 }
 
 // createMissingKeysSecret creates a secret with missing required keys.
@@ -758,8 +710,8 @@ func verifySecretExists(secretName string) {
 //
 // Parameters:
 //   - secretName: The name of the secret to create
-func createMissingKeysSecret(secretName string) {
-	ginkgo.By("creating a secret with missing keys")
+func createMissingKeysSecret(t *testing.T, secretName string) {
+	t.Log("creating a secret with missing keys")
 	var cmd *exec.Cmd
 	var err error
 	var output string
@@ -771,28 +723,28 @@ func createMissingKeysSecret(secretName string) {
 		"--from-literal=unhealthyEndpoint="+statusEndpoint(200),
 		"-n", namespace)
 	_, err = utils.Run(cmd)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to create secret")
+	require.NoError(t, err, "Failed to create secret")
 
 	// Then get the secret in YAML format
 	cmd = exec.Command("kubectl", "get", "secret", secretName,
 		"-n", namespace, "-o", "yaml")
 	output, err = utils.Run(cmd)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	require.NoError(t, err)
 
 	// Parse the YAML and modify it to have empty data
 	var secretYAML map[string]any
 	err = yaml.Unmarshal([]byte(output), &secretYAML)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	require.NoError(t, err)
 	secretYAML["data"] = map[string]any{}
 
 	// Convert back to YAML
 	modifiedOutput, err := yaml.Marshal(secretYAML)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	require.NoError(t, err)
 
 	// Now replace the secret with empty data
 	cmd = exec.Command("kubectl", "replace", "-f", "-")
 	_, err = utils.RunWithInput(cmd, string(modifiedOutput))
-	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to update secret")
+	require.NoError(t, err, "Failed to update secret")
 }
 
 // createMissingKeysHeartbeat creates a Heartbeat resource that references the missing keys secret.
@@ -801,8 +753,8 @@ func createMissingKeysSecret(secretName string) {
 // Parameters:
 //   - heartbeatName: The name of the Heartbeat resource to create
 //   - secretName: The name of the secret containing endpoint configurations
-func createMissingKeysHeartbeat(heartbeatName, secretName string) {
-	ginkgo.By("creating a Heartbeat resource")
+func createMissingKeysHeartbeat(t *testing.T, heartbeatName, secretName string) {
+	t.Log("creating a Heartbeat resource")
 	heartbeatYAML := fmt.Sprintf(`apiVersion: monitoring.siutsin.com/v1alpha1
 kind: Heartbeat
 metadata:
@@ -820,7 +772,7 @@ spec:
       max: 299`, heartbeatName, namespace, secretName)
 	cmd := exec.Command("kubectl", "apply", "-f", "-")
 	_, err := utils.RunWithInput(cmd, heartbeatYAML)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to create Heartbeat resource")
+	require.NoError(t, err, "Failed to create Heartbeat resource")
 }
 
 // createInvalidStatusCodeHeartbeat creates a Heartbeat resource with invalid status code ranges.
@@ -829,8 +781,8 @@ spec:
 // Parameters:
 //   - heartbeatName: The name of the Heartbeat resource to create
 //   - secretName: The name of the secret containing endpoint configurations
-func createInvalidStatusCodeHeartbeat(heartbeatName, secretName string) {
-	ginkgo.By("creating a Heartbeat with invalid status code ranges")
+func createInvalidStatusCodeHeartbeat(t *testing.T, heartbeatName, secretName string) {
+	t.Log("creating a Heartbeat with invalid status code ranges")
 	heartbeatYAML := fmt.Sprintf(`apiVersion: monitoring.siutsin.com/v1alpha1
 kind: Heartbeat
 metadata:
@@ -849,7 +801,7 @@ spec:
 
 	cmd := exec.Command("kubectl", "apply", "-f", "-")
 	_, err := utils.RunWithInput(cmd, heartbeatYAML)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to create Heartbeat")
+	require.NoError(t, err, "Failed to create Heartbeat")
 }
 
 // createMultipleRangesSecret creates a secret with multiple status code range configurations.
@@ -857,15 +809,15 @@ spec:
 //
 // Parameters:
 //   - secretName: The name of the secret to create
-func createMultipleRangesSecret(secretName string) {
-	ginkgo.By("creating a secret with multiple status code ranges")
+func createMultipleRangesSecret(t *testing.T, secretName string) {
+	t.Log("creating a secret with multiple status code ranges")
 	cmd := exec.Command("kubectl", "create", "secret", "generic", secretName,
 		"--from-literal=targetEndpoint="+statusEndpoint(200),
 		"--from-literal=healthyEndpoint="+statusEndpoint(200),
 		"--from-literal=unhealthyEndpoint="+statusEndpoint(200),
 		"-n", namespace)
 	_, err := utils.Run(cmd)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to create secret")
+	require.NoError(t, err, "Failed to create secret")
 }
 
 // createMultipleRangesHeartbeat creates a Heartbeat resource that references the multiple ranges secret.
@@ -874,8 +826,8 @@ func createMultipleRangesSecret(secretName string) {
 // Parameters:
 //   - heartbeatName: The name of the Heartbeat resource to create
 //   - secretName: The name of the secret containing endpoint configurations
-func createMultipleRangesHeartbeat(heartbeatName, secretName string) {
-	ginkgo.By("creating a Heartbeat resource")
+func createMultipleRangesHeartbeat(t *testing.T, heartbeatName, secretName string) {
+	t.Log("creating a Heartbeat resource")
 	heartbeatYAML := fmt.Sprintf(`apiVersion: monitoring.siutsin.com/v1alpha1
 kind: Heartbeat
 metadata:
@@ -896,7 +848,7 @@ spec:
 
 	cmd := exec.Command("kubectl", "apply", "-f", "-")
 	_, err := utils.RunWithInput(cmd, heartbeatYAML)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to create Heartbeat")
+	require.NoError(t, err, "Failed to create Heartbeat")
 }
 
 // createTimeoutSecret creates a secret with timeout configurations.
@@ -904,15 +856,15 @@ spec:
 //
 // Parameters:
 //   - secretName: The name of the secret to create
-func createTimeoutSecret(secretName string) {
-	ginkgo.By("creating a secret with a timeout endpoint")
+func createTimeoutSecret(t *testing.T, secretName string) {
+	t.Log("creating a secret with a timeout endpoint")
 	cmd := exec.Command("kubectl", "create", "secret", "generic", secretName,
 		"--from-literal=targetEndpoint="+delayEndpoint(5),
 		"--from-literal=healthyEndpoint="+statusEndpoint(200),
 		"--from-literal=unhealthyEndpoint="+statusEndpoint(200),
 		"-n", namespace)
 	_, err := utils.Run(cmd)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to create secret")
+	require.NoError(t, err, "Failed to create secret")
 }
 
 // createTimeoutHeartbeat creates a Heartbeat resource that references the timeout secret.
@@ -921,8 +873,8 @@ func createTimeoutSecret(secretName string) {
 // Parameters:
 //   - heartbeatName: The name of the Heartbeat resource to create
 //   - secretName: The name of the secret containing endpoint configurations
-func createTimeoutHeartbeat(heartbeatName, secretName string) {
-	ginkgo.By("creating a Heartbeat resource")
+func createTimeoutHeartbeat(t *testing.T, heartbeatName, secretName string) {
+	t.Log("creating a Heartbeat resource")
 	heartbeatYAML := fmt.Sprintf(`apiVersion: monitoring.siutsin.com/v1alpha1
 kind: Heartbeat
 metadata:
@@ -941,21 +893,20 @@ spec:
 
 	cmd := exec.Command("kubectl", "apply", "-f", "-")
 	_, err := utils.RunWithInput(cmd, heartbeatYAML)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to create Heartbeat")
+	require.NoError(t, err, "Failed to create Heartbeat")
 }
 
 // verifyHeartbeatExists checks that the specified Heartbeat resource exists.
 //
 // Parameters:
 //   - heartbeatName: The name of the Heartbeat resource to verify
-func verifyHeartbeatExists(heartbeatName string) {
-	ginkgo.By("waiting for the Heartbeat resource to be ready")
-	verifyHeartbeatExists := func(g gomega.Gomega) {
+func verifyHeartbeatExists(t *testing.T, heartbeatName string) {
+	t.Log("waiting for the Heartbeat resource to be ready")
+	require.Eventually(t, func() bool {
 		cmd := exec.Command("kubectl", "get", "heartbeat", heartbeatName, "-n", namespace)
 		_, err := utils.Run(cmd)
-		g.Expect(err).NotTo(gomega.HaveOccurred())
-	}
-	gomega.Eventually(verifyHeartbeatExists, 10*time.Second, time.Second).Should(gomega.Succeed())
+		return err == nil
+	}, 10*time.Second, time.Second, "Heartbeat resource not ready")
 }
 
 // verifyHeartbeatHealth verifies that the Heartbeat resource has the expected health status and report status.
@@ -965,28 +916,27 @@ func verifyHeartbeatExists(heartbeatName string) {
 //   - heartbeatName: The name of the Heartbeat resource to verify
 //   - expectedHealthy: The expected health status (true for healthy, false for unhealthy)
 //   - expectedReportStatus: The expected report status (e.g., "Success", "Failure")
-func verifyHeartbeatHealth(heartbeatName string, expectedHealthy bool, expectedReportStatus string) {
-	ginkgo.By("verifying the Heartbeat status")
-	verifyHeartbeatStatus := func(g gomega.Gomega) {
+func verifyHeartbeatHealth(t *testing.T, heartbeatName string, expectedHealthy bool, expectedReportStatus string) {
+	t.Log("verifying the Heartbeat status")
+	require.Eventually(t, func() bool {
 		cmd := exec.Command("kubectl", "get", "heartbeat", heartbeatName,
 			"-o", "jsonpath={.status.healthy}",
 			"-n", namespace)
 		output, err := utils.Run(cmd)
-		g.Expect(err).NotTo(gomega.HaveOccurred())
-		healthy := output == "true"
-		g.Expect(healthy).To(gomega.Equal(expectedHealthy), "Heartbeat health status mismatch")
-
+		if err != nil || (output == "true") != expectedHealthy {
+			return false
+		}
 		if expectedReportStatus != "" {
-			// Check reportStatus
 			cmd = exec.Command("kubectl", "get", "heartbeat", heartbeatName,
 				"-o", "jsonpath={.status.reportStatus}",
 				"-n", namespace)
 			reportStatus, err := utils.Run(cmd)
-			g.Expect(err).NotTo(gomega.HaveOccurred())
-			g.Expect(reportStatus).To(gomega.Equal(expectedReportStatus), "reportStatus mismatch")
+			if err != nil || reportStatus != expectedReportStatus {
+				return false
+			}
 		}
-	}
-	gomega.Eventually(verifyHeartbeatStatus, 60*time.Second, time.Second).Should(gomega.Succeed())
+		return true
+	}, 60*time.Second, time.Second, "Heartbeat health status mismatch")
 }
 
 // verifyHeartbeatMessage verifies that the Heartbeat resource has the expected status message.
@@ -994,14 +944,14 @@ func verifyHeartbeatHealth(heartbeatName string, expectedHealthy bool, expectedR
 // Parameters:
 //   - heartbeatName: The name of the Heartbeat resource to verify
 //   - expectedMessage: The expected status message
-func verifyHeartbeatMessage(heartbeatName, expectedMessage string) {
-	ginkgo.By("verifying the Heartbeat message contains the correct status code")
+func verifyHeartbeatMessage(t *testing.T, heartbeatName, expectedMessage string) {
+	t.Log("verifying the Heartbeat message contains the correct status code")
 	cmd := exec.Command("kubectl", "get", "heartbeat", heartbeatName,
 		"-o", "jsonpath={.status.message}",
 		"-n", namespace)
 	output, err := utils.Run(cmd)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
-	gomega.Expect(output).To(gomega.Equal(expectedMessage))
+	require.NoError(t, err)
+	require.Equal(t, expectedMessage, output)
 }
 
 // verifyHeartbeatMessageContains verifies that the Heartbeat resource's status message contains the expected substring.
@@ -1009,17 +959,15 @@ func verifyHeartbeatMessage(heartbeatName, expectedMessage string) {
 // Parameters:
 //   - heartbeatName: The name of the Heartbeat resource to verify
 //   - expectedSubstring: The expected substring in the status message
-func verifyHeartbeatMessageContains(heartbeatName, expectedSubstring string) {
-	ginkgo.By("verifying the Heartbeat message indicates missing keys")
-	check := func() string {
+func verifyHeartbeatMessageContains(t *testing.T, heartbeatName, expectedSubstring string) {
+	t.Log("verifying the Heartbeat message indicates missing keys")
+	require.Eventually(t, func() bool {
 		cmd := exec.Command("kubectl", "get", "heartbeat", heartbeatName,
 			"-o", "jsonpath={.status.message}",
 			"-n", namespace)
 		output, err := utils.Run(cmd)
-		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		return output
-	}
-	gomega.Eventually(check, 15*time.Second, time.Second).Should(gomega.ContainSubstring(expectedSubstring))
+		return err == nil && strings.Contains(output, expectedSubstring)
+	}, 15*time.Second, time.Second, "Heartbeat message missing expected substring")
 }
 
 // updateSecretToReturn404 updates the secret to return a 404 status code.
@@ -1027,20 +975,20 @@ func verifyHeartbeatMessageContains(heartbeatName, expectedSubstring string) {
 //
 // Parameters:
 //   - secretName: The name of the secret to update
-func updateSecretToReturn404(secretName string) {
-	ginkgo.By("updating the secret to return 404 status code")
+func updateSecretToReturn404(t *testing.T, secretName string) {
+	t.Log("updating the secret to return 404 status code")
 	data := map[string]string{
 		"targetEndpoint":    base64.StdEncoding.EncodeToString([]byte(statusEndpoint(404))),
 		"healthyEndpoint":   base64.StdEncoding.EncodeToString([]byte(statusEndpoint(200))),
 		"unhealthyEndpoint": base64.StdEncoding.EncodeToString([]byte(statusEndpoint(200))),
 	}
 	patch, err := json.Marshal(map[string]any{"data": data})
-	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to build secret patch")
+	require.NoError(t, err, "Failed to build secret patch")
 
 	cmd := exec.Command("kubectl", "patch", "secret", secretName,
 		"--type=merge", "-p", string(patch), "-n", namespace)
 	_, err = utils.Run(cmd)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to update secret")
+	require.NoError(t, err, "Failed to update secret")
 }
 
 // verifyHeartbeatStatusPopulated verifies that the Heartbeat resource's status message is populated.
@@ -1048,15 +996,13 @@ func updateSecretToReturn404(secretName string) {
 //
 // Parameters:
 //   - heartbeatName: The name of the Heartbeat resource to verify
-func verifyHeartbeatStatusPopulated(heartbeatName string) {
-	ginkgo.By("waiting for the Heartbeat status to be populated")
-	verifyHeartbeatStatusPopulated := func(g gomega.Gomega) {
+func verifyHeartbeatStatusPopulated(t *testing.T, heartbeatName string) {
+	t.Log("waiting for the Heartbeat status to be populated")
+	require.Eventually(t, func() bool {
 		cmd := exec.Command("kubectl", "get", "heartbeat", heartbeatName,
 			"-o", "jsonpath={.status.message}",
 			"-n", namespace)
 		output, err := utils.Run(cmd)
-		g.Expect(err).NotTo(gomega.HaveOccurred())
-		g.Expect(output).NotTo(gomega.BeEmpty(), "Heartbeat status message should be populated")
-	}
-	gomega.Eventually(verifyHeartbeatStatusPopulated, 30*time.Second, time.Second).Should(gomega.Succeed())
+		return err == nil && output != ""
+	}, 30*time.Second, time.Second, "Heartbeat status message should be populated")
 }
