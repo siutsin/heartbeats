@@ -265,8 +265,7 @@ func appleImageTag(cluster, name string) error {
 //   - []string: A slice of non-empty lines from the output
 func GetNonEmptyLines(output string) []string {
 	var res []string
-	elements := strings.Split(output, "\n")
-	for _, element := range elements {
+	for element := range strings.SplitSeq(output, "\n") {
 		if element != "" {
 			res = append(res, element)
 		}

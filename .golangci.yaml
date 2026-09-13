@@ -13,6 +13,7 @@ linters:
     - errorlint # Enforce modern wrapped-error handling.
     - gosec # Catch common security issues.
     - misspell # Catch common spelling mistakes using UK English.
+    - modernize # Suggest modern stdlib constructs.
     - nilerr # Catch returning nil with a non-nil error.
     - noctx # Require context-aware APIs in non-test code paths.
     - nolintlint # Keep nolint directives specific and justified.
