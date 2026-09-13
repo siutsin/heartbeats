@@ -1,4 +1,4 @@
-package controller_test
+package internal_test
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	monitoringv1alpha1 "github.com/siutsin/heartbeats/api/v1alpha1"
-	"github.com/siutsin/heartbeats/internal/controller"
+	"github.com/siutsin/heartbeats/internal"
 )
 
 // setupScheme creates and returns a runtime scheme with the monitoring API types registered.
@@ -69,7 +69,7 @@ func TestNewStatusUpdater(t *testing.T) {
 	g := gomega.NewWithT(t)
 
 	client := fake.NewClientBuilder().WithScheme(setupScheme(t)).Build()
-	updater := controller.NewStatusUpdater(client)
+	updater := internal.NewStatusUpdater(client)
 
 	g.Expect(updater).NotTo(gomega.BeNil())
 	g.Expect(updater.Client).To(gomega.Equal(client))
@@ -93,7 +93,7 @@ func TestUpdateStatus_Basic(t *testing.T) {
 		WithStatusSubresource(heartbeat).
 		Build()
 
-	updater := controller.NewStatusUpdater(client)
+	updater := internal.NewStatusUpdater(client)
 
 	err := updater.UpdateStatus(context.Background(), heartbeat, 200, true, "test message")
 
@@ -107,55 +107,55 @@ func TestUpdateStatus_Basic(t *testing.T) {
 // errorConditionTestCases defines the test cases for error condition status updates.
 var errorConditionTestCases = []struct {
 	name            string
-	updateFunc      func(*controller.StatusUpdater, context.Context, *monitoringv1alpha1.Heartbeat) error
+	updateFunc      func(*internal.StatusUpdater, context.Context, *monitoringv1alpha1.Heartbeat) error
 	expectedStatus  int
 	expectedHealthy bool
 	expectedMsg     string
 }{
 	{
 		name: "update secret error status",
-		updateFunc: func(u *controller.StatusUpdater, ctx context.Context, h *monitoringv1alpha1.Heartbeat) error {
+		updateFunc: func(u *internal.StatusUpdater, ctx context.Context, h *monitoringv1alpha1.Heartbeat) error {
 			return u.UpdateSecretErrorStatus(ctx, h, errors.New("test error"))
 		},
 		expectedStatus:  0,
 		expectedHealthy: false,
-		expectedMsg:     controller.ErrFailedToGetSecret,
+		expectedMsg:     internal.ErrFailedToGetSecret,
 	},
 	{
 		name: "update missing key status",
-		updateFunc: func(u *controller.StatusUpdater, ctx context.Context, h *monitoringv1alpha1.Heartbeat) error {
+		updateFunc: func(u *internal.StatusUpdater, ctx context.Context, h *monitoringv1alpha1.Heartbeat) error {
 			return u.UpdateMissingKeyStatus(ctx, h, "test-key")
 		},
 		expectedStatus:  0,
 		expectedHealthy: false,
-		expectedMsg:     controller.ErrMissingRequiredKey,
+		expectedMsg:     internal.ErrMissingRequiredKey,
 	},
 	{
 		name: "update empty endpoint status",
-		updateFunc: func(u *controller.StatusUpdater, ctx context.Context, h *monitoringv1alpha1.Heartbeat) error {
+		updateFunc: func(u *internal.StatusUpdater, ctx context.Context, h *monitoringv1alpha1.Heartbeat) error {
 			return u.UpdateEmptyEndpointStatus(ctx, h)
 		},
 		expectedStatus:  0,
 		expectedHealthy: false,
-		expectedMsg:     controller.ErrEndpointNotSpecified,
+		expectedMsg:     internal.ErrEndpointNotSpecified,
 	},
 	{
 		name: "update health check error status",
-		updateFunc: func(u *controller.StatusUpdater, ctx context.Context, h *monitoringv1alpha1.Heartbeat) error {
+		updateFunc: func(u *internal.StatusUpdater, ctx context.Context, h *monitoringv1alpha1.Heartbeat) error {
 			return u.UpdateHealthCheckErrorStatus(ctx, h, 500, errors.New("test error"))
 		},
 		expectedStatus:  500,
 		expectedHealthy: false,
-		expectedMsg:     controller.ErrFailedToCheckEndpoint,
+		expectedMsg:     internal.ErrFailedToCheckEndpoint,
 	},
 	{
 		name: "update invalid range status",
-		updateFunc: func(u *controller.StatusUpdater, ctx context.Context, h *monitoringv1alpha1.Heartbeat) error {
+		updateFunc: func(u *internal.StatusUpdater, ctx context.Context, h *monitoringv1alpha1.Heartbeat) error {
 			return u.UpdateInvalidRangeStatus(ctx, h, 500)
 		},
 		expectedStatus:  500,
 		expectedHealthy: false,
-		expectedMsg:     controller.ErrInvalidStatusCodeRange,
+		expectedMsg:     internal.ErrInvalidStatusCodeRange,
 	},
 }
 
@@ -172,7 +172,7 @@ func TestUpdateStatus_ErrorConditions(t *testing.T) {
 // runErrorConditionTest executes a single error condition test case.
 func runErrorConditionTest(t *testing.T, tt struct {
 	name            string
-	updateFunc      func(*controller.StatusUpdater, context.Context, *monitoringv1alpha1.Heartbeat) error
+	updateFunc      func(*internal.StatusUpdater, context.Context, *monitoringv1alpha1.Heartbeat) error
 	expectedStatus  int
 	expectedHealthy bool
 	expectedMsg     string
@@ -181,7 +181,7 @@ func runErrorConditionTest(t *testing.T, tt struct {
 
 	heartbeat := createTestHeartbeat()
 	client := createTestClient(t, heartbeat)
-	updater := controller.NewStatusUpdater(client)
+	updater := internal.NewStatusUpdater(client)
 
 	err := tt.updateFunc(updater, context.Background(), heartbeat)
 
@@ -199,7 +199,7 @@ func TestUpdateHealthStatus_HealthyEndpoint(t *testing.T) {
 
 	heartbeat := createTestHeartbeat()
 	client := createTestClient(t, heartbeat)
-	updater := controller.NewStatusUpdater(client)
+	updater := internal.NewStatusUpdater(client)
 
 	err := updater.UpdateHealthStatus(
 		context.Background(),
@@ -213,7 +213,7 @@ func TestUpdateHealthStatus_HealthyEndpoint(t *testing.T) {
 	g.Expect(err).NotTo(gomega.HaveOccurred())
 	g.Expect(heartbeat.Status.LastStatus).To(gomega.Equal(200))
 	g.Expect(heartbeat.Status.Healthy).To(gomega.BeTrue())
-	g.Expect(heartbeat.Status.Message).To(gomega.Equal(controller.ErrEndpointHealthy))
+	g.Expect(heartbeat.Status.Message).To(gomega.Equal(internal.ErrEndpointHealthy))
 	g.Expect(heartbeat.Status.ReportStatus).To(gomega.Equal("Success"))
 }
 
@@ -230,7 +230,7 @@ func TestUpdateHealthStatus_UnhealthyEndpoint(t *testing.T) {
 			name:        "status code not in range",
 			statusCode:  500,
 			err:         nil,
-			expectedMsg: controller.ErrStatusCodeNotInRange,
+			expectedMsg: internal.ErrStatusCodeNotInRange,
 		},
 		{
 			name:        "error checking health",
@@ -246,7 +246,7 @@ func TestUpdateHealthStatus_UnhealthyEndpoint(t *testing.T) {
 
 			heartbeat := createTestHeartbeat()
 			client := createTestClient(t, heartbeat)
-			updater := controller.NewStatusUpdater(client)
+			updater := internal.NewStatusUpdater(client)
 
 			err := updater.UpdateHealthStatus(
 				context.Background(),
@@ -273,7 +273,7 @@ func TestUpdateHealthStatus_ReportFailure(t *testing.T) {
 
 	heartbeat := createTestHeartbeat()
 	client := createTestClient(t, heartbeat)
-	updater := controller.NewStatusUpdater(client)
+	updater := internal.NewStatusUpdater(client)
 
 	err := updater.UpdateHealthStatus(
 		context.Background(),
@@ -287,7 +287,7 @@ func TestUpdateHealthStatus_ReportFailure(t *testing.T) {
 	g.Expect(err).NotTo(gomega.HaveOccurred())
 	g.Expect(heartbeat.Status.LastStatus).To(gomega.Equal(200))
 	g.Expect(heartbeat.Status.Healthy).To(gomega.BeTrue())
-	g.Expect(heartbeat.Status.Message).To(gomega.Equal(controller.ErrEndpointHealthy))
+	g.Expect(heartbeat.Status.Message).To(gomega.Equal(internal.ErrEndpointHealthy))
 	g.Expect(heartbeat.Status.ReportStatus).To(gomega.Equal("Failure"))
 }
 
@@ -298,7 +298,7 @@ func TestUpdateStatusWithClientError(t *testing.T) {
 
 	// Create a fake client that always returns an error
 	errClient := &fakeErrorClient{err: errors.New("test error")}
-	updater := controller.NewStatusUpdater(errClient)
+	updater := internal.NewStatusUpdater(errClient)
 
 	heartbeat := &monitoringv1alpha1.Heartbeat{
 		ObjectMeta: metav1.ObjectMeta{

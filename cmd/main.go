@@ -32,7 +32,7 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	monitoringv1alpha1 "github.com/siutsin/heartbeats/api/v1alpha1"
-	"github.com/siutsin/heartbeats/internal/controller"
+	"github.com/siutsin/heartbeats/internal"
 )
 
 var (
@@ -108,9 +108,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controller.HeartbeatReconciler{
+	if err = (&internal.HeartbeatReconciler{
 		Client: mgr.GetClient(),
-		Config: controller.Config{
+		Config: internal.Config{
 			DefaultTimeout: defaultTimeout,
 			MaxRetries:     maxRetries,
 			RetryDelay:     retryDelay,

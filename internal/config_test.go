@@ -1,4 +1,4 @@
-package controller_test
+package internal_test
 
 import (
 	"testing"
@@ -6,7 +6,7 @@ import (
 
 	"github.com/onsi/gomega"
 
-	"github.com/siutsin/heartbeats/internal/controller"
+	"github.com/siutsin/heartbeats/internal"
 )
 
 // TestDefaultConfig verifies that the default configuration returns the expected values.
@@ -15,7 +15,7 @@ import (
 func TestDefaultConfig(t *testing.T) {
 	g := gomega.NewWithT(t)
 
-	config := controller.DefaultConfig()
+	config := internal.DefaultConfig()
 
 	g.Expect(config.DefaultTimeout).To(gomega.Equal(10 * time.Second))
 	g.Expect(config.MaxRetries).To(gomega.Equal(3))
