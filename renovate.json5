@@ -15,5 +15,9 @@
       matchPackageNames: ['github.com/go-logr/stdr'],
       abandonmentThreshold: null, // Never mark as abandoned
     },
+    {
+      matchPackageNames: ['sigs.k8s.io/yaml'],
+      abandonmentThreshold: null, // Stable k8s lib; low churn, not dead
+    },
   ],
 }
