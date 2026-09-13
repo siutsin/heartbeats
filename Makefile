@@ -9,9 +9,12 @@ GOBIN=$(shell go env GOBIN)
 endif
 
 # CONTAINER_TOOL defines the container tool to be used for building images.
-# Auto-detects docker or podman, preferring docker if both are available.
+# Auto-detects docker, podman, or Apple Container, preferring docker if available.
 # Can be overridden by setting CONTAINER_TOOL environment variable.
-CONTAINER_TOOL ?= $(shell command -v docker >/dev/null 2>&1 && echo docker || (command -v podman >/dev/null 2>&1 && echo podman || echo docker))
+CONTAINER_TOOL ?= $(shell command -v docker >/dev/null 2>&1 && echo docker || (command -v podman >/dev/null 2>&1 && echo podman || (command -v container >/dev/null 2>&1 && echo container || echo docker)))
+# KIND_PROVIDER detects the provider backing kind clusters.
+# Apple Container builds images but cannot back kind, so e2e targets require Docker or Podman.
+KIND_PROVIDER ?= $(shell command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1 && echo docker || (command -v podman >/dev/null 2>&1 && echo podman || echo ""))
 
 # Setting SHELL to bash allows bash commands to be executed by recipes.
 # Options are set to exit when a recipe line exits non-zero or a piped command fails.
@@ -79,6 +82,10 @@ define run-e2e-tests
 		echo "Kind is not installed. Please install Kind manually."; \
 		exit 1; \
 	}
+	@if [ -z "$(KIND_PROVIDER)" ]; then \
+		echo "E2E needs Docker or Podman to back kind. Apple Container builds images but cannot back kind clusters. Cover e2e in CI."; \
+		exit 1; \
+	fi
 	@if [ "$(LOCAL)" = "true" ]; then \
 		kind delete cluster --name kind; \
 		kind create cluster --name kind --config test/e2e/kind-config.yaml; \
@@ -105,6 +112,24 @@ test-e2e: manifests generate fmt vet docker-build ## Run e2e tests without race 
 test-e2e-ci: manifests generate fmt vet docker-build ## Run e2e tests with race detection for CI. Use LOCAL=true for fresh kind cluster.
 	$(call run-e2e-tests,1,Running e2e tests with race detection,-race)
 
+APPLE_CLUSTER ?= e2e-apple
+APPLE_KUBECONFIG ?= $(CURDIR)/.kube-apple.yaml
+
+.PHONY: test-e2e-apple
+test-e2e-apple: manifests generate fmt vet ## Run e2e tests on Apple Container (macOS only).
+	@command -v container >/dev/null 2>&1 || { \
+		echo "Apple Container CLI is not installed."; \
+		exit 1; \
+	}
+	container k8s delete --name $(APPLE_CLUSTER) || true
+	container k8s create --name $(APPLE_CLUSTER)
+	container k8s write-config --name $(APPLE_CLUSTER) --kubeconfig $(APPLE_KUBECONFIG)
+	kubectl config use-context $(APPLE_CLUSTER) --kubeconfig $(APPLE_KUBECONFIG)
+	CLUSTER_BACKEND=apple KIND_CLUSTER=$(APPLE_CLUSTER) KUBECONFIG=$(APPLE_KUBECONFIG) \
+	CONTAINER_TOOL=$(CONTAINER_TOOL) CGO_ENABLED=0 go test ./test/e2e/ -v -ginkgo.v || test_status=$$?; \
+	git checkout -- config/manager/kustomization.yaml; \
+	exit $${test_status:-0}
+
 ##@ Linting
 
 .PHONY: lint
@@ -122,23 +147,21 @@ lint-config: ## Verify golangci-lint linter configuration
 	@command -v $(GOLANGCI_LINT) >/dev/null 2>&1 || { echo "ERROR: golangci-lint not found on PATH"; exit 1; }
 	$(GOLANGCI_LINT) config verify
 
-# Install markdownlint
-.PHONY: lint-markdown-install
-lint-markdown-install: ## Install markdownlint-cli2 for markdown linting
-	@echo "Installing markdownlint-cli2..."
-	brew install markdownlint-cli2
+.PHONY: lint-dockerfile
+lint-dockerfile: ## Run hadolint on Dockerfiles.
+	hadolint $(DOCKERFILES)
 
 # Lint markdown files
 .PHONY: lint-markdown
 lint-markdown: ## Lint markdown files using markdownlint-cli2
 	@echo "Linting markdown files..."
-	markdownlint-cli2 '**/*.md'
+	npx --yes markdownlint-cli2 '**/*.md'
 
 # Fix markdown files
 .PHONY: lint-markdown-fix
 lint-markdown-fix: ## Fix markdown files using markdownlint-cli2
 	@echo "Fixing markdown files..."
-	markdownlint-cli2 '**/*.md' --fix
+	npx --yes markdownlint-cli2 '**/*.md' --fix
 
 ##@ Build
 
@@ -168,14 +191,15 @@ docker-push: ## Push docker image with the manager.
 # - be able to push the image to your registry (i.e. if you do not set a valid value via IMG=<myregistry/image:<tag>> then the export will fail)
 # To adequately provide solutions that are compatible with multiple platforms, you should consider using this option.
 PLATFORMS ?= linux/arm64,linux/amd64
+BUILDX_BUILDER ?= operator-builder
 .PHONY: docker-buildx
 docker-buildx: ## Build and push docker image for the manager for cross-platform support
 	# copy existing Dockerfile and insert --platform=${BUILDPLATFORM} into Dockerfile.cross, and preserve the original Dockerfile
 	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' Dockerfile > Dockerfile.cross
-	- $(CONTAINER_TOOL) buildx create --name heartbeats-operator-builder
-	$(CONTAINER_TOOL) buildx use heartbeats-operator-builder
+	- $(CONTAINER_TOOL) buildx create --name $(BUILDX_BUILDER)
+	$(CONTAINER_TOOL) buildx use $(BUILDX_BUILDER)
 	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --tag ${IMG} -f Dockerfile.cross .
-	- $(CONTAINER_TOOL) buildx rm heartbeats-operator-builder
+	- $(CONTAINER_TOOL) buildx rm $(BUILDX_BUILDER)
 	rm Dockerfile.cross
 
 # Define ignore-not-found with a default value
@@ -231,6 +255,7 @@ $(LOCALBIN):
 ## Tool Binaries
 KUBECTL ?= kubectl
 KIND ?= kind
+DOCKERFILES := $(shell find . -type f \( -name 'Dockerfile' -o -name '*.Dockerfile' \))
 KUSTOMIZE ?= $(LOCALBIN)/kustomize
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest
@@ -238,8 +263,8 @@ GOLANGCI_LINT ?= $(shell which golangci-lint)
 MOCKERY ?= $(LOCALBIN)/mockery
 
 ## Tool Versions
-KUSTOMIZE_VERSION ?= v5.6.0
-CONTROLLER_TOOLS_VERSION ?= v0.17.2
+KUSTOMIZE_VERSION ?= v5.8.1
+CONTROLLER_TOOLS_VERSION ?= v0.22.0
 #ENVTEST_VERSION is the version of controller-runtime release branch to fetch the envtest setup script (i.e. release-0.20)
 ENVTEST_VERSION ?= $(shell go list -m -f "{{ .Version }}" sigs.k8s.io/controller-runtime | awk -F'[v.]' '{printf "release-%d.%d", $$2, $$3}')
 #ENVTEST_K8S_VERSION is the version of Kubernetes to use for setting up ENVTEST binaries (i.e. 1.31)
