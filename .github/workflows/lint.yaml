@@ -20,7 +20,7 @@ on:
       - '.github/workflows/lint.yaml'
 
 jobs:
-  go:
+  lint:
     runs-on: ubuntu-latest
 
     permissions:
