@@ -25,7 +25,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -145,10 +144,8 @@ func TestReconciler(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			heartbeat := &monitoringv1alpha1.Heartbeat{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      testName,
-					Namespace: testNamespace,
-				},
+				Name:      testName,
+				Namespace: testNamespace,
 				Spec: monitoringv1alpha1.HeartbeatSpec{
 					EndpointsSecret: monitoringv1alpha1.EndpointsSecret{
 						Name:                 secretName,
@@ -161,10 +158,8 @@ func TestReconciler(t *testing.T) {
 			}
 
 			secret := &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      secretName,
-					Namespace: testNamespace,
-				},
+				Name:      secretName,
+				Namespace: testNamespace,
 			}
 
 			tt.setup(heartbeat, secret)
@@ -189,10 +184,8 @@ func TestReconciler(t *testing.T) {
 			}
 
 			_, err := reconciler.Reconcile(context.Background(), ctrl.Request{
-				NamespacedName: types.NamespacedName{
-					Name:      testName,
-					Namespace: testNamespace,
-				},
+				Name:      testName,
+				Namespace: testNamespace,
 			})
 			require.NoError(t, err)
 
@@ -217,10 +210,8 @@ func TestConcurrentReconciliationNotBlocked(t *testing.T) {
 	require.NoError(t, corev1.AddToScheme(scheme))
 
 	failingHeartbeat := &monitoringv1alpha1.Heartbeat{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "failing-heartbeat",
-			Namespace: testNamespace,
-		},
+		Name:      "failing-heartbeat",
+		Namespace: testNamespace,
 		Spec: monitoringv1alpha1.HeartbeatSpec{
 			EndpointsSecret: monitoringv1alpha1.EndpointsSecret{
 				Name:                 "failing-secret",
@@ -233,10 +224,8 @@ func TestConcurrentReconciliationNotBlocked(t *testing.T) {
 		},
 	}
 	failingSecret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "failing-secret",
-			Namespace: testNamespace,
-		},
+		Name:      "failing-secret",
+		Namespace: testNamespace,
 		Data: map[string][]byte{
 			"targetEndpoint":    []byte("https://unreachable.example.com"),
 			"healthyEndpoint":   []byte("https://healthy.example.com"),
@@ -245,10 +234,8 @@ func TestConcurrentReconciliationNotBlocked(t *testing.T) {
 	}
 
 	healthyHeartbeat := &monitoringv1alpha1.Heartbeat{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "healthy-heartbeat",
-			Namespace: testNamespace,
-		},
+		Name:      "healthy-heartbeat",
+		Namespace: testNamespace,
 		Spec: monitoringv1alpha1.HeartbeatSpec{
 			EndpointsSecret: monitoringv1alpha1.EndpointsSecret{
 				Name:                 "healthy-secret",
@@ -261,10 +248,8 @@ func TestConcurrentReconciliationNotBlocked(t *testing.T) {
 		},
 	}
 	healthySecret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "healthy-secret",
-			Namespace: testNamespace,
-		},
+		Name:      "healthy-secret",
+		Namespace: testNamespace,
 		Data: map[string][]byte{
 			"targetEndpoint":    []byte("https://healthy.example.com"),
 			"healthyEndpoint":   []byte("https://healthy.example.com"),
@@ -306,7 +291,7 @@ func TestConcurrentReconciliationNotBlocked(t *testing.T) {
 	errCh := make(chan error, 2)
 	go func() {
 		_, err := reconciler.Reconcile(context.Background(), ctrl.Request{
-			NamespacedName: types.NamespacedName{Name: "failing-heartbeat", Namespace: testNamespace},
+			Name: "failing-heartbeat", Namespace: testNamespace,
 		})
 		failingCompleted = time.Now()
 		errCh <- err
@@ -314,7 +299,7 @@ func TestConcurrentReconciliationNotBlocked(t *testing.T) {
 
 	go func() {
 		_, err := reconciler.Reconcile(context.Background(), ctrl.Request{
-			NamespacedName: types.NamespacedName{Name: "healthy-heartbeat", Namespace: testNamespace},
+			Name: "healthy-heartbeat", Namespace: testNamespace,
 		})
 		healthyCompleted = time.Now()
 		errCh <- err

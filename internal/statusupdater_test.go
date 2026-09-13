@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -29,10 +28,8 @@ func setupScheme(t *testing.T) *runtime.Scheme {
 // createTestHeartbeat returns a test heartbeat with default metadata.
 func createTestHeartbeat() *monitoringv1alpha1.Heartbeat {
 	return &monitoringv1alpha1.Heartbeat{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-heartbeat",
-			Namespace: "default",
-		},
+		Name:      "test-heartbeat",
+		Namespace: "default",
 	}
 }
 
@@ -61,10 +58,8 @@ func TestNewStatusUpdater(t *testing.T) {
 func TestUpdateStatus_Basic(t *testing.T) {
 
 	heartbeat := &monitoringv1alpha1.Heartbeat{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-heartbeat",
-			Namespace: "default",
-		},
+		Name:      "test-heartbeat",
+		Namespace: "default",
 	}
 
 	client := fake.NewClientBuilder().
@@ -266,10 +261,8 @@ func TestUpdateStatusWithClientError(t *testing.T) {
 	updater := heartbeats.NewStatusUpdater(errClient)
 
 	heartbeat := &monitoringv1alpha1.Heartbeat{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-heartbeat",
-			Namespace: "default",
-		},
+		Name:      "test-heartbeat",
+		Namespace: "default",
 	}
 
 	err := updater.UpdateStatus(context.Background(), heartbeat, 200, true, "test message")
