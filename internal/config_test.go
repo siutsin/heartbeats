@@ -4,19 +4,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/onsi/gomega"
+	"github.com/stretchr/testify/require"
 
 	heartbeats "github.com/siutsin/heartbeats/internal"
 )
 
 // TestDefaultConfig verifies production default values.
 func TestDefaultConfig(t *testing.T) {
-	g := gomega.NewWithT(t)
 
 	config := heartbeats.DefaultConfig()
 
-	g.Expect(config.DefaultTimeout).To(gomega.Equal(10 * time.Second))
-	g.Expect(config.MaxRetries).To(gomega.Equal(3))
-	g.Expect(config.RetryDelay).To(gomega.Equal(1 * time.Second))
-	g.Expect(config.RequeueAfter).To(gomega.Equal(5 * time.Second))
+	require.Equal(t, 10*time.Second, config.DefaultTimeout)
+	require.Equal(t, 3, config.MaxRetries)
+	require.Equal(t, 1*time.Second, config.RetryDelay)
+	require.Equal(t, 5*time.Second, config.RequeueAfter)
 }

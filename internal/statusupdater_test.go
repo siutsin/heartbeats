@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/onsi/gomega"
+	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -49,18 +49,16 @@ func createTestClient(t *testing.T, heartbeat *monitoringv1alpha1.Heartbeat) cli
 
 // TestNewStatusUpdater verifies the factory returns a usable updater.
 func TestNewStatusUpdater(t *testing.T) {
-	g := gomega.NewWithT(t)
 
 	client := fake.NewClientBuilder().WithScheme(setupScheme(t)).Build()
 	updater := heartbeats.NewStatusUpdater(client)
 
-	g.Expect(updater).NotTo(gomega.BeNil())
-	g.Expect(updater.Client).To(gomega.Equal(client))
+	require.NotNil(t, updater)
+	require.Equal(t, client, updater.Client)
 }
 
 // TestUpdateStatus_Basic verifies UpdateStatus sets every status field.
 func TestUpdateStatus_Basic(t *testing.T) {
-	g := gomega.NewWithT(t)
 
 	heartbeat := &monitoringv1alpha1.Heartbeat{
 		ObjectMeta: metav1.ObjectMeta{
@@ -79,11 +77,11 @@ func TestUpdateStatus_Basic(t *testing.T) {
 
 	err := updater.UpdateStatus(context.Background(), heartbeat, 200, true, "test message")
 
-	g.Expect(err).NotTo(gomega.HaveOccurred())
-	g.Expect(heartbeat.Status.LastStatus).To(gomega.Equal(200))
-	g.Expect(heartbeat.Status.Healthy).To(gomega.BeTrue())
-	g.Expect(heartbeat.Status.Message).To(gomega.Equal("test message"))
-	g.Expect(heartbeat.Status.LastChecked).NotTo(gomega.BeNil())
+	require.NoError(t, err)
+	require.Equal(t, 200, heartbeat.Status.LastStatus)
+	require.True(t, heartbeat.Status.Healthy)
+	require.Equal(t, "test message", heartbeat.Status.Message)
+	require.NotNil(t, heartbeat.Status.LastChecked)
 }
 
 // errorConditionTestCase is one error-status row: the update call plus expected status.
@@ -155,7 +153,6 @@ func TestUpdateStatus_ErrorConditions(t *testing.T) {
 
 // runErrorConditionTest executes one errorConditionTestCase.
 func runErrorConditionTest(t *testing.T, tt errorConditionTestCase) {
-	g := gomega.NewWithT(t)
 
 	heartbeat := createTestHeartbeat()
 	client := createTestClient(t, heartbeat)
@@ -163,16 +160,15 @@ func runErrorConditionTest(t *testing.T, tt errorConditionTestCase) {
 
 	err := tt.updateFunc(updater, context.Background(), heartbeat)
 
-	g.Expect(err).NotTo(gomega.HaveOccurred())
-	g.Expect(heartbeat.Status.LastStatus).To(gomega.Equal(tt.expectedStatus))
-	g.Expect(heartbeat.Status.Healthy).To(gomega.Equal(tt.expectedHealthy))
-	g.Expect(heartbeat.Status.Message).To(gomega.Equal(tt.expectedMsg))
-	g.Expect(heartbeat.Status.LastChecked).NotTo(gomega.BeNil())
+	require.NoError(t, err)
+	require.Equal(t, tt.expectedStatus, heartbeat.Status.LastStatus)
+	require.Equal(t, tt.expectedHealthy, heartbeat.Status.Healthy)
+	require.Equal(t, tt.expectedMsg, heartbeat.Status.Message)
+	require.NotNil(t, heartbeat.Status.LastChecked)
 }
 
 // TestUpdateHealthStatus_HealthyEndpoint verifies healthy results set success status.
 func TestUpdateHealthStatus_HealthyEndpoint(t *testing.T) {
-	g := gomega.NewWithT(t)
 
 	heartbeat := createTestHeartbeat()
 	client := createTestClient(t, heartbeat)
@@ -187,11 +183,11 @@ func TestUpdateHealthStatus_HealthyEndpoint(t *testing.T) {
 		true, // report success
 	)
 
-	g.Expect(err).NotTo(gomega.HaveOccurred())
-	g.Expect(heartbeat.Status.LastStatus).To(gomega.Equal(200))
-	g.Expect(heartbeat.Status.Healthy).To(gomega.BeTrue())
-	g.Expect(heartbeat.Status.Message).To(gomega.Equal(heartbeats.ErrEndpointHealthy))
-	g.Expect(heartbeat.Status.ReportStatus).To(gomega.Equal("Success"))
+	require.NoError(t, err)
+	require.Equal(t, 200, heartbeat.Status.LastStatus)
+	require.True(t, heartbeat.Status.Healthy)
+	require.Equal(t, heartbeats.ErrEndpointHealthy, heartbeat.Status.Message)
+	require.Equal(t, "Success", heartbeat.Status.ReportStatus)
 }
 
 // TestUpdateHealthStatus_UnhealthyEndpoint verifies unhealthy results set failure status.
@@ -218,8 +214,6 @@ func TestUpdateHealthStatus_UnhealthyEndpoint(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			g := gomega.NewWithT(t)
-
 			heartbeat := createTestHeartbeat()
 			client := createTestClient(t, heartbeat)
 			updater := heartbeats.NewStatusUpdater(client)
@@ -233,18 +227,17 @@ func TestUpdateHealthStatus_UnhealthyEndpoint(t *testing.T) {
 				true, // report success
 			)
 
-			g.Expect(err).NotTo(gomega.HaveOccurred())
-			g.Expect(heartbeat.Status.LastStatus).To(gomega.Equal(tt.statusCode))
-			g.Expect(heartbeat.Status.Healthy).To(gomega.BeFalse())
-			g.Expect(heartbeat.Status.Message).To(gomega.Equal(tt.expectedMsg))
-			g.Expect(heartbeat.Status.ReportStatus).To(gomega.Equal("Success"))
+			require.NoError(t, err)
+			require.Equal(t, tt.statusCode, heartbeat.Status.LastStatus)
+			require.False(t, heartbeat.Status.Healthy)
+			require.Equal(t, tt.expectedMsg, heartbeat.Status.Message)
+			require.Equal(t, "Success", heartbeat.Status.ReportStatus)
 		})
 	}
 }
 
 // TestUpdateHealthStatus_ReportFailure verifies a failed report sets ReportStatus Failure.
 func TestUpdateHealthStatus_ReportFailure(t *testing.T) {
-	g := gomega.NewWithT(t)
 
 	heartbeat := createTestHeartbeat()
 	client := createTestClient(t, heartbeat)
@@ -259,16 +252,15 @@ func TestUpdateHealthStatus_ReportFailure(t *testing.T) {
 		false, // report failure
 	)
 
-	g.Expect(err).NotTo(gomega.HaveOccurred())
-	g.Expect(heartbeat.Status.LastStatus).To(gomega.Equal(200))
-	g.Expect(heartbeat.Status.Healthy).To(gomega.BeTrue())
-	g.Expect(heartbeat.Status.Message).To(gomega.Equal(heartbeats.ErrEndpointHealthy))
-	g.Expect(heartbeat.Status.ReportStatus).To(gomega.Equal("Failure"))
+	require.NoError(t, err)
+	require.Equal(t, 200, heartbeat.Status.LastStatus)
+	require.True(t, heartbeat.Status.Healthy)
+	require.Equal(t, heartbeats.ErrEndpointHealthy, heartbeat.Status.Message)
+	require.Equal(t, "Failure", heartbeat.Status.ReportStatus)
 }
 
 // TestUpdateStatusWithClientError verifies client failures surface to the caller.
 func TestUpdateStatusWithClientError(t *testing.T) {
-	g := gomega.NewWithT(t)
 
 	errClient := &fakeErrorClient{err: errors.New("test error")}
 	updater := heartbeats.NewStatusUpdater(errClient)
@@ -282,8 +274,8 @@ func TestUpdateStatusWithClientError(t *testing.T) {
 
 	err := updater.UpdateStatus(context.Background(), heartbeat, 200, true, "test message")
 
-	g.Expect(err).To(gomega.HaveOccurred())
-	g.Expect(err.Error()).To(gomega.ContainSubstring("test error"))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "test error")
 }
 
 // fakeErrorClient is a client whose status writes always fail.
