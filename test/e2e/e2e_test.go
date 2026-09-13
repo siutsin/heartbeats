@@ -31,8 +31,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/goccy/go-yaml"
 	"github.com/stretchr/testify/require"
+	"sigs.k8s.io/yaml"
 
 	heartbeats "github.com/siutsin/heartbeats/internal"
 	"github.com/siutsin/heartbeats/test/utils"
