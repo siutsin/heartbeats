@@ -17,6 +17,7 @@ on:
       - 'Makefile'
       - 'PROJECT'
       - 'config/**'
+      - '.mise.toml'
       - '.github/workflows/lint.yaml'
 
 jobs:
