@@ -42,20 +42,17 @@ const (
 	interval      = "5s"
 )
 
-// testCase defines the structure for table-driven tests in the heartbeat heartbeats.
-// Each test case specifies the expected behaviour and provides setup functions.
+// testCase is one row of the Reconciler table test.
 type testCase struct {
-	name           string                                              // Name of the test case
-	statusCode     int                                                 // Expected HTTP status code
-	expectedStatus int                                                 // Expected status code in the heartbeat status
-	expectedMsg    string                                              // Expected status message
-	expectHealthy  bool                                                // Whether the endpoint should be marked as healthy
-	setupMock      func(*monitoringv1alpha1.Heartbeat, *corev1.Secret) // Function to set up test data
+	name           string
+	statusCode     int
+	expectedStatus int
+	expectedMsg    string
+	expectHealthy  bool
+	setup          func(*monitoringv1alpha1.Heartbeat, *corev1.Secret)
 }
 
-// TestReconciler runs a comprehensive test suite for the Reconciler.
-// It uses table-driven tests to verify various scenarios including healthy endpoints,
-// unhealthy endpoints, invalid configurations, and error conditions.
+// TestReconciler verifies reconcile outcomes across endpoint configurations.
 func TestReconciler(t *testing.T) {
 	g := gomega.NewWithT(t)
 	scheme := runtime.NewScheme()
@@ -69,7 +66,7 @@ func TestReconciler(t *testing.T) {
 			expectedStatus: http.StatusOK,
 			expectedMsg:    heartbeats.ErrEndpointHealthy,
 			expectHealthy:  true,
-			setupMock: func(h *monitoringv1alpha1.Heartbeat, s *corev1.Secret) {
+			setup: func(h *monitoringv1alpha1.Heartbeat, s *corev1.Secret) {
 				h.Spec.ExpectedStatusCodeRanges = []monitoringv1alpha1.StatusCodeRange{
 					{Min: 200, Max: 299},
 				}
@@ -86,7 +83,7 @@ func TestReconciler(t *testing.T) {
 			expectedStatus: http.StatusInternalServerError,
 			expectedMsg:    heartbeats.ErrStatusCodeNotInRange,
 			expectHealthy:  false,
-			setupMock: func(h *monitoringv1alpha1.Heartbeat, s *corev1.Secret) {
+			setup: func(h *monitoringv1alpha1.Heartbeat, s *corev1.Secret) {
 				h.Spec.ExpectedStatusCodeRanges = []monitoringv1alpha1.StatusCodeRange{
 					{Min: 200, Max: 299},
 				}
@@ -103,7 +100,7 @@ func TestReconciler(t *testing.T) {
 			expectedStatus: 0,
 			expectedMsg:    heartbeats.ErrInvalidStatusCodeRange,
 			expectHealthy:  false,
-			setupMock: func(h *monitoringv1alpha1.Heartbeat, s *corev1.Secret) {
+			setup: func(h *monitoringv1alpha1.Heartbeat, s *corev1.Secret) {
 				h.Spec.ExpectedStatusCodeRanges = []monitoringv1alpha1.StatusCodeRange{
 					{Min: 300, Max: 200},
 				}
@@ -120,7 +117,7 @@ func TestReconciler(t *testing.T) {
 			expectedStatus: 0,
 			expectedMsg:    heartbeats.ErrMissingRequiredKey,
 			expectHealthy:  false,
-			setupMock: func(h *monitoringv1alpha1.Heartbeat, s *corev1.Secret) {
+			setup: func(h *monitoringv1alpha1.Heartbeat, s *corev1.Secret) {
 				h.Spec.ExpectedStatusCodeRanges = []monitoringv1alpha1.StatusCodeRange{
 					{Min: 200, Max: 299},
 				}
@@ -133,7 +130,7 @@ func TestReconciler(t *testing.T) {
 			expectedStatus: 0,
 			expectedMsg:    heartbeats.ErrEndpointNotSpecified,
 			expectHealthy:  false,
-			setupMock: func(h *monitoringv1alpha1.Heartbeat, s *corev1.Secret) {
+			setup: func(h *monitoringv1alpha1.Heartbeat, s *corev1.Secret) {
 				h.Spec.ExpectedStatusCodeRanges = []monitoringv1alpha1.StatusCodeRange{
 					{Min: 200, Max: 299},
 				}
@@ -150,7 +147,6 @@ func TestReconciler(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			g := gomega.NewWithT(t)
 
-			// Create test objects
 			heartbeat := &monitoringv1alpha1.Heartbeat{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      testName,
@@ -174,24 +170,20 @@ func TestReconciler(t *testing.T) {
 				},
 			}
 
-			// Setup mock data
-			tt.setupMock(heartbeat, secret)
+			tt.setup(heartbeat, secret)
 
-			// Create fake client
 			client := fake.NewClientBuilder().
 				WithScheme(scheme).
 				WithObjects(heartbeat, secret).
 				WithStatusSubresource(heartbeat).
 				Build()
 
-			// Create fake HealthChecker with canned result
 			checker := &fakeHealthChecker{
 				check: func(context.Context, string, []monitoringv1alpha1.StatusCodeRange, monitoringv1alpha1.EndpointsSecret) (bool, int, bool, error) {
 					return tt.expectHealthy, tt.statusCode, true, nil
 				},
 			}
 
-			// Create reconciler with fake HealthChecker
 			reconciler := &heartbeats.Reconciler{
 				Client:        client,
 				Config:        heartbeats.DefaultConfig(),
@@ -199,7 +191,6 @@ func TestReconciler(t *testing.T) {
 				StatusUpdater: heartbeats.NewStatusUpdater(client),
 			}
 
-			// Reconcile
 			_, err := reconciler.Reconcile(context.Background(), ctrl.Request{
 				NamespacedName: types.NamespacedName{
 					Name:      testName,
@@ -208,7 +199,6 @@ func TestReconciler(t *testing.T) {
 			})
 			g.Expect(err).NotTo(gomega.HaveOccurred())
 
-			// Verify status
 			err = client.Get(context.Background(), types.NamespacedName{
 				Name:      testName,
 				Namespace: testNamespace,
@@ -222,11 +212,7 @@ func TestReconciler(t *testing.T) {
 	}
 }
 
-// TestConcurrentReconciliationNotBlocked verifies that a failing health check
-// does not block other Heartbeat resources from being reconciled.
-// This test simulates multiple Heartbeats where one has a failing endpoint that takes
-// time to fail (simulating network timeout/retries), and verifies that the healthy
-// Heartbeat completes its reconciliation without waiting for the failing one.
+// TestConcurrentReconciliationNotBlocked verifies a slow failing check does not block a healthy one.
 func TestConcurrentReconciliationNotBlocked(t *testing.T) {
 	g := gomega.NewWithT(t)
 
@@ -234,7 +220,6 @@ func TestConcurrentReconciliationNotBlocked(t *testing.T) {
 	g.Expect(monitoringv1alpha1.AddToScheme(scheme)).To(gomega.Succeed())
 	g.Expect(corev1.AddToScheme(scheme)).To(gomega.Succeed())
 
-	// Create multiple heartbeats and secrets
 	failingHeartbeat := &monitoringv1alpha1.Heartbeat{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "failing-heartbeat",
@@ -291,14 +276,12 @@ func TestConcurrentReconciliationNotBlocked(t *testing.T) {
 		},
 	}
 
-	// Create fake client with both heartbeats
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(scheme).
 		WithObjects(failingHeartbeat, failingSecret, healthyHeartbeat, healthySecret).
 		WithStatusSubresource(failingHeartbeat, healthyHeartbeat).
 		Build()
 
-	// Simulate a failing endpoint that takes time to fail (like network timeout with retries)
 	failureDelay := 500 * time.Millisecond
 	networkErr := fmt.Errorf("dial tcp: lookup unreachable.example.com: no such host")
 
@@ -314,7 +297,6 @@ func TestConcurrentReconciliationNotBlocked(t *testing.T) {
 		},
 	}
 
-	// Create reconciler
 	reconciler := &heartbeats.Reconciler{
 		Client:        fakeClient,
 		Config:        heartbeats.DefaultConfig(),
@@ -322,11 +304,9 @@ func TestConcurrentReconciliationNotBlocked(t *testing.T) {
 		StatusUpdater: heartbeats.NewStatusUpdater(fakeClient),
 	}
 
-	// Track completion times
 	var failingCompleted, healthyCompleted time.Time
 	startTime := time.Now()
 
-	// Run reconciliations concurrently (simulating what the controller does with MaxConcurrentReconciles > 1)
 	errCh := make(chan error, 2)
 	go func() {
 		_, err := reconciler.Reconcile(context.Background(), ctrl.Request{
@@ -344,23 +324,18 @@ func TestConcurrentReconciliationNotBlocked(t *testing.T) {
 		errCh <- err
 	}()
 
-	// Wait for both to complete
 	g.Expect(<-errCh).NotTo(gomega.HaveOccurred())
 	g.Expect(<-errCh).NotTo(gomega.HaveOccurred())
 
-	// Verify healthy heartbeat completed significantly before failing heartbeat
 	healthyDuration := healthyCompleted.Sub(startTime)
 	failingDuration := failingCompleted.Sub(startTime)
 
-	// Healthy should complete much quicker than the failure delay
 	g.Expect(healthyDuration).To(gomega.BeNumerically("<", failureDelay),
 		"healthy heartbeat should complete before failing endpoint times out")
 
-	// Failing should take at least the delay time
 	g.Expect(failingDuration).To(gomega.BeNumerically(">=", failureDelay),
 		"failing heartbeat should take at least the failure delay time")
 
-	// Verify healthy heartbeat was updated successfully
 	err := fakeClient.Get(context.Background(), types.NamespacedName{
 		Name: "healthy-heartbeat", Namespace: testNamespace,
 	}, healthyHeartbeat)
@@ -369,7 +344,6 @@ func TestConcurrentReconciliationNotBlocked(t *testing.T) {
 		"healthy heartbeat should be marked as healthy")
 	g.Expect(healthyHeartbeat.Status.Message).To(gomega.Equal(heartbeats.ErrEndpointHealthy))
 
-	// Verify failing heartbeat was updated with error status
 	err = fakeClient.Get(context.Background(), types.NamespacedName{
 		Name: "failing-heartbeat", Namespace: testNamespace,
 	}, failingHeartbeat)
@@ -378,7 +352,7 @@ func TestConcurrentReconciliationNotBlocked(t *testing.T) {
 		"failing heartbeat should be marked as unhealthy")
 }
 
-// TestParseInterval tests the parseInterval function with various valid and invalid interval strings.
+// TestParseInterval verifies duration parsing, including invalid input.
 func TestParseInterval(t *testing.T) {
 	tests := []struct {
 		name        string

@@ -9,8 +9,7 @@ const (
 	MaxConcurrentReconciles = 10
 )
 
-// Config holds the controller configuration parameters.
-// It defines timeouts, retry settings, and requeue intervals for the heartbeat controller.
+// Config tunes HTTP timeouts, retries, and requeue interval.
 type Config struct {
 	DefaultTimeout time.Duration // Maximum time to wait for HTTP requests
 	MaxRetries     int           // Maximum number of retry attempts for failed requests
@@ -18,15 +17,7 @@ type Config struct {
 	RequeueAfter   time.Duration // How often to requeue reconciliation
 }
 
-// DefaultConfig returns the default configuration for the heartbeat controller.
-// This provides sensible defaults for production use.
-//
-// Returns:
-//   - Config: A configuration struct with default values:
-//   - DefaultTimeout: 10 seconds for HTTP requests
-//   - MaxRetries: 3 retry attempts
-//   - RetryDelay: 1 second between retries
-//   - RequeueAfter: 5 seconds between reconciliations
+// DefaultConfig returns production timeouts and retry settings.
 func DefaultConfig() Config {
 	return Config{
 		DefaultTimeout: 10 * time.Second,
