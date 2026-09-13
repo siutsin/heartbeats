@@ -16,7 +16,7 @@ on:
       - 'config/**'
       - '.mise.toml'
       - '**/Dockerfile'
-      - '.github/workflows/test-e2e.yaml'
+      - '.github/workflows/**'
 
 jobs:
   test-e2e:
@@ -24,8 +24,6 @@ jobs:
 
     permissions:
       contents: read
-      # Write allows the Docker GHA cache backend to save layer cache.
-      actions: write
 
     steps:
       - name: Clone the code
@@ -37,7 +35,7 @@ jobs:
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
-          cache: true
+          cache: false
 
       - name: Setup mise
         uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac # v2
@@ -51,17 +49,15 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
 
-      # Prebuild the e2e image with GHA layer caching. BeforeSuite in
+      # Prebuild the e2e image. BeforeSuite in
       # test/e2e/e2e_suite_test.go skips its own build when this tag exists,
-      # so the image is built once per cache state instead of twice cold.
-      - name: Build e2e image with cache
+      # so the image is built once, not twice.
+      - name: Build e2e image
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: .
           load: true
           tags: heartbeats-operator:test
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
       # BeforeSuite owns kind lifecycle (fresh cluster with
       # test/e2e/kind-config.yaml), so no separate create step here.
