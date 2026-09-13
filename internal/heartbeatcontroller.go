@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package controller
+package heartbeats
 
 import (
 	"context"
@@ -37,8 +37,8 @@ const (
 	errMsgFailedToFetchResource = "Failed to fetch resource"
 )
 
-// HeartbeatReconciler reconciles a Heartbeat object
-type HeartbeatReconciler struct {
+// Reconciler reconciles a Heartbeat object
+type Reconciler struct {
 	client.Client
 	Config        Config
 	HealthChecker HealthChecker
@@ -58,7 +58,7 @@ func ParseInterval(interval string) (time.Duration, error) {
 // +kubebuilder:rbac:groups=monitoring.siutsin.com,resources=heartbeats/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 
-func (r *HeartbeatReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	l := log.FromContext(ctx).WithName(logNameHeartbeatReconciler).WithValues(
 		"namespace", req.Namespace, "name", req.Name,
 	)
@@ -86,7 +86,7 @@ func (r *HeartbeatReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	return ctrl.Result{RequeueAfter: interval}, nil
 }
 
-func (r *HeartbeatReconciler) processHeartbeat(
+func (r *Reconciler) processHeartbeat(
 	ctx context.Context,
 	heartbeat *monitoringv1alpha1.Heartbeat,
 	req ctrl.Request,
@@ -110,7 +110,7 @@ func (r *HeartbeatReconciler) processHeartbeat(
 	return r.performHealthCheckAndReport(ctx, heartbeat, targetEndpoint, reportEndpoints, l)
 }
 
-func (r *HeartbeatReconciler) fetchHeartbeat(
+func (r *Reconciler) fetchHeartbeat(
 	ctx context.Context,
 	req ctrl.Request,
 ) (*monitoringv1alpha1.Heartbeat, error) {
@@ -124,7 +124,7 @@ func (r *HeartbeatReconciler) fetchHeartbeat(
 	return &heartbeat, nil
 }
 
-func (r *HeartbeatReconciler) fetchAndValidateSecret(
+func (r *Reconciler) fetchAndValidateSecret(
 	ctx context.Context,
 	req ctrl.Request,
 	heartbeat *monitoringv1alpha1.Heartbeat,
@@ -149,7 +149,7 @@ func (r *HeartbeatReconciler) fetchAndValidateSecret(
 	return secret, nil
 }
 
-func (r *HeartbeatReconciler) extractTargetEndpoint(
+func (r *Reconciler) extractTargetEndpoint(
 	ctx context.Context,
 	heartbeat *monitoringv1alpha1.Heartbeat,
 	secret *corev1.Secret,
@@ -169,7 +169,7 @@ func (r *HeartbeatReconciler) extractTargetEndpoint(
 	return endpoint, nil
 }
 
-func (r *HeartbeatReconciler) extractEndpointFromSecret(
+func (r *Reconciler) extractEndpointFromSecret(
 	ctx context.Context,
 	heartbeat *monitoringv1alpha1.Heartbeat,
 	secret *corev1.Secret,
@@ -187,7 +187,7 @@ func (r *HeartbeatReconciler) extractEndpointFromSecret(
 	return string(endpointBytes), nil
 }
 
-func (r *HeartbeatReconciler) extractReportEndpoints(
+func (r *Reconciler) extractReportEndpoints(
 	ctx context.Context,
 	heartbeat *monitoringv1alpha1.Heartbeat,
 	secret *corev1.Secret,
@@ -211,7 +211,7 @@ func (r *HeartbeatReconciler) extractReportEndpoints(
 	}, nil
 }
 
-func (r *HeartbeatReconciler) performHealthCheckAndReport(
+func (r *Reconciler) performHealthCheckAndReport(
 	ctx context.Context,
 	heartbeat *monitoringv1alpha1.Heartbeat,
 	targetEndpoint string,
@@ -242,7 +242,7 @@ func (r *HeartbeatReconciler) performHealthCheckAndReport(
 	return nil
 }
 
-func (r *HeartbeatReconciler) validateStatusCodeRanges(
+func (r *Reconciler) validateStatusCodeRanges(
 	ctx context.Context,
 	heartbeat *monitoringv1alpha1.Heartbeat,
 	l logr.Logger,
@@ -260,7 +260,7 @@ func (r *HeartbeatReconciler) validateStatusCodeRanges(
 	return false
 }
 
-func (r *HeartbeatReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	if r.Config.DefaultTimeout == 0 {
 		r.Config = DefaultConfig()
 	}

@@ -1,4 +1,4 @@
-package controller
+package heartbeats
 
 // Error messages used throughout the controller for consistent error reporting.
 // These constants provide standardised error messages for various failure scenarios.

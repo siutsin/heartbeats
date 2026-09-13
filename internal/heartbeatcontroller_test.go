@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package controller_test
+package heartbeats_test
 
 import (
 	"context"
@@ -32,7 +32,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	monitoringv1alpha1 "github.com/siutsin/heartbeats/api/v1alpha1"
-	"github.com/siutsin/heartbeats/internal/controller"
+	heartbeats "github.com/siutsin/heartbeats/internal"
 )
 
 const (
@@ -42,7 +42,7 @@ const (
 	interval      = "5s"
 )
 
-// testCase defines the structure for table-driven tests in the heartbeat controller.
+// testCase defines the structure for table-driven tests in the heartbeat heartbeats.
 // Each test case specifies the expected behaviour and provides setup functions.
 type testCase struct {
 	name           string                                              // Name of the test case
@@ -53,10 +53,10 @@ type testCase struct {
 	setupMock      func(*monitoringv1alpha1.Heartbeat, *corev1.Secret) // Function to set up test data
 }
 
-// TestHeartbeatReconciler runs a comprehensive test suite for the HeartbeatReconciler.
+// TestReconciler runs a comprehensive test suite for the Reconciler.
 // It uses table-driven tests to verify various scenarios including healthy endpoints,
 // unhealthy endpoints, invalid configurations, and error conditions.
-func TestHeartbeatReconciler(t *testing.T) {
+func TestReconciler(t *testing.T) {
 	g := gomega.NewWithT(t)
 	scheme := runtime.NewScheme()
 	g.Expect(monitoringv1alpha1.AddToScheme(scheme)).To(gomega.Succeed())
@@ -67,7 +67,7 @@ func TestHeartbeatReconciler(t *testing.T) {
 			name:           "healthy endpoint",
 			statusCode:     http.StatusOK,
 			expectedStatus: http.StatusOK,
-			expectedMsg:    controller.ErrEndpointHealthy,
+			expectedMsg:    heartbeats.ErrEndpointHealthy,
 			expectHealthy:  true,
 			setupMock: func(h *monitoringv1alpha1.Heartbeat, s *corev1.Secret) {
 				h.Spec.ExpectedStatusCodeRanges = []monitoringv1alpha1.StatusCodeRange{
@@ -84,7 +84,7 @@ func TestHeartbeatReconciler(t *testing.T) {
 			name:           "unhealthy endpoint",
 			statusCode:     http.StatusInternalServerError,
 			expectedStatus: http.StatusInternalServerError,
-			expectedMsg:    controller.ErrStatusCodeNotInRange,
+			expectedMsg:    heartbeats.ErrStatusCodeNotInRange,
 			expectHealthy:  false,
 			setupMock: func(h *monitoringv1alpha1.Heartbeat, s *corev1.Secret) {
 				h.Spec.ExpectedStatusCodeRanges = []monitoringv1alpha1.StatusCodeRange{
@@ -101,7 +101,7 @@ func TestHeartbeatReconciler(t *testing.T) {
 			name:           "invalid status code range",
 			statusCode:     0, // No status code since health check should not be performed
 			expectedStatus: 0,
-			expectedMsg:    controller.ErrInvalidStatusCodeRange,
+			expectedMsg:    heartbeats.ErrInvalidStatusCodeRange,
 			expectHealthy:  false,
 			setupMock: func(h *monitoringv1alpha1.Heartbeat, s *corev1.Secret) {
 				h.Spec.ExpectedStatusCodeRanges = []monitoringv1alpha1.StatusCodeRange{
@@ -118,7 +118,7 @@ func TestHeartbeatReconciler(t *testing.T) {
 			name:           "missing secret key",
 			statusCode:     0,
 			expectedStatus: 0,
-			expectedMsg:    controller.ErrMissingRequiredKey,
+			expectedMsg:    heartbeats.ErrMissingRequiredKey,
 			expectHealthy:  false,
 			setupMock: func(h *monitoringv1alpha1.Heartbeat, s *corev1.Secret) {
 				h.Spec.ExpectedStatusCodeRanges = []monitoringv1alpha1.StatusCodeRange{
@@ -131,7 +131,7 @@ func TestHeartbeatReconciler(t *testing.T) {
 			name:           "empty endpoint",
 			statusCode:     0,
 			expectedStatus: 0,
-			expectedMsg:    controller.ErrEndpointNotSpecified,
+			expectedMsg:    heartbeats.ErrEndpointNotSpecified,
 			expectHealthy:  false,
 			setupMock: func(h *monitoringv1alpha1.Heartbeat, s *corev1.Secret) {
 				h.Spec.ExpectedStatusCodeRanges = []monitoringv1alpha1.StatusCodeRange{
@@ -192,11 +192,11 @@ func TestHeartbeatReconciler(t *testing.T) {
 			}
 
 			// Create reconciler with fake HealthChecker
-			reconciler := &controller.HeartbeatReconciler{
+			reconciler := &heartbeats.Reconciler{
 				Client:        client,
-				Config:        controller.DefaultConfig(),
+				Config:        heartbeats.DefaultConfig(),
 				HealthChecker: checker,
-				StatusUpdater: controller.NewStatusUpdater(client),
+				StatusUpdater: heartbeats.NewStatusUpdater(client),
 			}
 
 			// Reconcile
@@ -315,11 +315,11 @@ func TestConcurrentReconciliationNotBlocked(t *testing.T) {
 	}
 
 	// Create reconciler
-	reconciler := &controller.HeartbeatReconciler{
+	reconciler := &heartbeats.Reconciler{
 		Client:        fakeClient,
-		Config:        controller.DefaultConfig(),
+		Config:        heartbeats.DefaultConfig(),
 		HealthChecker: checker,
-		StatusUpdater: controller.NewStatusUpdater(fakeClient),
+		StatusUpdater: heartbeats.NewStatusUpdater(fakeClient),
 	}
 
 	// Track completion times
@@ -367,7 +367,7 @@ func TestConcurrentReconciliationNotBlocked(t *testing.T) {
 	g.Expect(err).NotTo(gomega.HaveOccurred())
 	g.Expect(healthyHeartbeat.Status.Healthy).To(gomega.BeTrue(),
 		"healthy heartbeat should be marked as healthy")
-	g.Expect(healthyHeartbeat.Status.Message).To(gomega.Equal(controller.ErrEndpointHealthy))
+	g.Expect(healthyHeartbeat.Status.Message).To(gomega.Equal(heartbeats.ErrEndpointHealthy))
 
 	// Verify failing heartbeat was updated with error status
 	err = fakeClient.Get(context.Background(), types.NamespacedName{
@@ -437,7 +437,7 @@ func TestParseInterval(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			g := gomega.NewWithT(t)
 
-			result, err := controller.ParseInterval(tt.interval)
+			result, err := heartbeats.ParseInterval(tt.interval)
 
 			if tt.expectError {
 				g.Expect(err).To(gomega.HaveOccurred())
