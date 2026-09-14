@@ -4,6 +4,12 @@ on:
   push:
     branches:
       - master
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Exact version to release (e.g. 0.219.0). Empty = decide from commits.'
+        required: false
+        default: ''
 
 env:
   REGISTRY: ghcr.io
@@ -25,6 +31,7 @@ jobs:
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5
         with:
           release-type: go
+          release-as: ${{ inputs.version }}
 
       - name: Clone the code
         if: ${{ steps.release.outputs.release_created }}
