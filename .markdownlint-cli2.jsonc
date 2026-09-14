@@ -5,5 +5,5 @@
       "line_length": 180
     }
   },
-  "ignores": ["**/.cache/**", "**/.scratchpad/**", "**/node_modules/**", "bin/**"]
+  "ignores": ["**/.cache/**", "**/.scratchpad/**", "**/node_modules/**", "bin/**", "CHANGELOG.md"]
 }

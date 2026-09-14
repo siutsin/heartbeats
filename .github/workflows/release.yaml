@@ -1,51 +1,23 @@
 name: Release
 
 on:
-  workflow_dispatch:
-  schedule:
-    - cron: '0 9 * * 1'
+  push:
+    branches:
+      - master
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  check-changes:
-    runs-on: ubuntu-latest
-
-    permissions:
-      contents: read
-
-    outputs:
-      changed: ${{ steps.diff.outputs.changed }}
-
-    steps:
-      - name: Clone the code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-
-      - name: Check for code changes since last release
-        id: diff
-        run: |
-          last_tag=$(git describe --tags --abbrev=0 2>/dev/null || true)
-          if [ -z "$last_tag" ]; then
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          elif git diff --quiet "$last_tag" HEAD -- '**/*.go' 'go.mod' 'go.sum' 'Dockerfile' 'Makefile' 'PROJECT' 'config/**'; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          fi
-
   release:
-    needs: check-changes
-    if: needs.check-changes.outputs.changed == 'true'
     runs-on: ubuntu-latest
 
     permissions:
       contents: write
+      issues: write
       packages: write
+      pull-requests: write
 
     steps:
       - name: Run release-please
@@ -53,7 +25,6 @@ jobs:
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5
         with:
           release-type: go
-          skip-github-pull-request: true
 
       - name: Clone the code
         if: ${{ steps.release.outputs.release_created }}
