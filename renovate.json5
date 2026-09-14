@@ -19,8 +19,8 @@
       abandonmentThreshold: null, // Stable k8s lib; low churn, not dead
     },
     {
-      matchPackageNames: ['*'],
-      semanticCommitType: 'fix', // Dep updates ship as patches via release-please
+      matchManagers: ['github-actions'],
+      semanticCommitType: 'ci', // Action-only weeks must not ship
     },
   ],
 }
