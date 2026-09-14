@@ -18,6 +18,7 @@ type Config struct {
 }
 
 // DefaultConfig returns production timeouts and retry settings.
+// Manager flags override these at startup.
 func DefaultConfig() Config {
 	return Config{
 		DefaultTimeout: 10 * time.Second,
