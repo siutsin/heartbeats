@@ -38,7 +38,11 @@ jobs:
             exit 1
           fi
           files=$(gh pr diff "$pr" --name-only)
-          if [ "$files" != "CHANGELOG.md" ]; then
+          if ! echo "$files" | grep -qx "CHANGELOG.md"; then
+            echo "Refusing to merge #$pr: no CHANGELOG.md."
+            exit 1
+          fi
+          if echo "$files" | grep -qvFx -e "CHANGELOG.md" -e ".release-please-manifest.json"; then
             echo "Refusing to merge #$pr: unexpected files: $files."
             exit 1
           fi
