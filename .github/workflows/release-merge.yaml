@@ -26,6 +26,7 @@ jobs:
       - name: Merge pending release PR
         env:
           GH_TOKEN: ${{ github.token }}
+          REPO_OWNER: ${{ github.repository_owner }}
         run: |
           pr=$(gh pr list --label "autorelease: pending" --state open --json number --jq '.[0].number')
           if [ -z "$pr" ] || [ "$pr" = "null" ]; then
@@ -33,7 +34,7 @@ jobs:
             exit 0
           fi
           author=$(gh pr view "$pr" --json author --jq '.author.login')
-          if [ "$author" != "github-actions[bot]" ] && [ "$author" != "siutsin" ]; then
+          if [ "$author" != "github-actions[bot]" ] && [ "$author" != "$REPO_OWNER" ]; then
             echo "Refusing to merge #$pr: unexpected author $author."
             exit 1
           fi
