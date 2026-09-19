@@ -33,7 +33,7 @@ jobs:
             exit 0
           fi
           author=$(gh pr view "$pr" --json author --jq '.author.login')
-          if [ "$author" != "github-actions[bot]" ]; then
+          if [ "$author" != "github-actions[bot]" ] && [ "$author" != "siutsin" ]; then
             echo "Refusing to merge #$pr: unexpected author $author."
             exit 1
           fi
