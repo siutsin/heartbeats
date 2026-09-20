@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.218.2](https://github.com/siutsin/heartbeats/compare/v0.218.1...v0.218.2) (2026-09-20)
+
+
+### Bug Fixes
+
+* **deps:** bump OpenTelemetry to v1.46.0 and refresh stale action pins ([#604](https://github.com/siutsin/heartbeats/issues/604)) ([9ab2360](https://github.com/siutsin/heartbeats/commit/9ab2360356e6492509acbadd8a170a10265194ce))
+
 ## [0.218.1](https://github.com/siutsin/heartbeats/compare/v0.218.0...v0.218.1) (2026-09-19)
 
 
