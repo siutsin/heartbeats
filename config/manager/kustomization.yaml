@@ -2,7 +2,3 @@ resources:
 - manager.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-images:
-- name: controller
-  newName: ghcr.io/siutsin/heartbeats
-  newTag: v0.218.0@sha256:2243799d3653c6b75303bba7cd45af71481d7f26255bab2ec90594b5227e07ce
