@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.218.3](https://github.com/siutsin/heartbeats/compare/v0.218.2...v0.218.3) (2026-09-21)
+
+
+### Bug Fixes
+
+* **deps:** update module sigs.k8s.io/controller-runtime to v0.25.1 ([#607](https://github.com/siutsin/heartbeats/issues/607)) ([2af659b](https://github.com/siutsin/heartbeats/commit/2af659b386e4b34f792565df29634b322ac5f7b7))
+
 ## [0.218.2](https://github.com/siutsin/heartbeats/compare/v0.218.1...v0.218.2) (2026-09-20)
 
 
