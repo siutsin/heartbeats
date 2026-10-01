@@ -1,6 +1,6 @@
 [tools]
 go = "1.27.1"
-"golangci-lint" = "2.13.2"
+"golangci-lint" = "2.14.0"
 hadolint = "2.15.1"
 kind = "0.33.0"
 kubectl = "1.37.1"
