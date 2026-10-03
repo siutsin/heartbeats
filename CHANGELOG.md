@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.218.5](https://github.com/siutsin/heartbeats/compare/v0.218.4...v0.218.5) (2026-10-03)
+
+
+### Bug Fixes
+
+* **deps:** update kubernetes monorepo to v0.37.1 ([#623](https://github.com/siutsin/heartbeats/issues/623)) ([ce5db10](https://github.com/siutsin/heartbeats/commit/ce5db10b61283eb2ffa83e84702e64440341f201))
+
+
+### Miscellaneous
+
+* **deps:** update dependency golangci-lint to v2.14.0 ([#625](https://github.com/siutsin/heartbeats/issues/625)) ([a006bbb](https://github.com/siutsin/heartbeats/commit/a006bbb38fd7041e2846cb39afa0389401147269))
+* **deps:** update dependency kubectl to v1.37.1 ([#620](https://github.com/siutsin/heartbeats/issues/620)) ([d98211f](https://github.com/siutsin/heartbeats/commit/d98211f99782e2f7de823a68811fd6c38082205a))
+
 ## [0.218.4](https://github.com/siutsin/heartbeats/compare/v0.218.3...v0.218.4) (2026-09-26)
 
 
