@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.218.6](https://github.com/siutsin/heartbeats/compare/v0.218.5...v0.218.6) (2026-10-10)
+
+
+### Bug Fixes
+
+* **deps:** update module sigs.k8s.io/controller-runtime to v0.25.2 ([#637](https://github.com/siutsin/heartbeats/issues/637)) ([6837b07](https://github.com/siutsin/heartbeats/commit/6837b07a6970e7c148f3ebf9eaeae0c5a8d07618))
+
+
+### Miscellaneous
+
+* **deps:** update dependency kustomize to v5.8.2 ([#633](https://github.com/siutsin/heartbeats/issues/633)) ([a4b318e](https://github.com/siutsin/heartbeats/commit/a4b318e4a371feb2395f9c370a838e86f6d9486f))
+* **deps:** update dependency setup-envtest to v0.25.2 ([#636](https://github.com/siutsin/heartbeats/issues/636)) ([c2de6f7](https://github.com/siutsin/heartbeats/commit/c2de6f73eb4b2e3cc2d3008f4bc9dc7c890292ef))
+
 ## [0.218.5](https://github.com/siutsin/heartbeats/compare/v0.218.4...v0.218.5) (2026-10-03)
 
 
