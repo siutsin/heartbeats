@@ -8,14 +8,14 @@ on:
     branches:
       - master
     paths:
-      - **/*.go
+      - "**/*.go"
       - go.mod
       - go.sum
       - Makefile
       - PROJECT
       - config/**
       - .mise.toml
-      - **/Dockerfile
+      - "**/Dockerfile"
       - .github/workflows/**
 
 jobs:
