@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.218.7](https://github.com/siutsin/heartbeats/compare/v0.218.6...v0.218.7) (2026-10-17)
+
+
+### Bug Fixes
+
+* **ci:** update mise action pin to current v5 commit ([#650](https://github.com/siutsin/heartbeats/issues/650)) ([f00a646](https://github.com/siutsin/heartbeats/commit/f00a646a6583127756257602c007c21c208304a7))
+* **ci:** use exact version comments on pinned actions ([#656](https://github.com/siutsin/heartbeats/issues/656)) ([90d7094](https://github.com/siutsin/heartbeats/commit/90d70946b3ddf62cf528befe656df5484e5caa7f))
+
+
+### Miscellaneous
+
+* **deps:** update dependency go to v1.27.2 ([#653](https://github.com/siutsin/heartbeats/issues/653)) ([ea2f1be](https://github.com/siutsin/heartbeats/commit/ea2f1be4028b55809d8d127105d6e920fadcd19f))
+* **deps:** update dependency kustomize to v5.8.3 ([#654](https://github.com/siutsin/heartbeats/issues/654)) ([f90404c](https://github.com/siutsin/heartbeats/commit/f90404cea739291cff124bca97a668f7889056c4))
+* **deps:** update docker.io/golang:1.27.1 docker digest to 162be52 ([#647](https://github.com/siutsin/heartbeats/issues/647)) ([f6a50e7](https://github.com/siutsin/heartbeats/commit/f6a50e7c6c9326c4619567dcd9489286f3509f07))
+
 ## [0.218.6](https://github.com/siutsin/heartbeats/compare/v0.218.5...v0.218.6) (2026-10-11)
 
 
