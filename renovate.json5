@@ -1,40 +1,29 @@
 {
   $schema: 'https://docs.renovatebot.com/renovate-schema.json',
-  extends: [
-    'config:best-practices',
-  ],
-  automerge: true,
-  major: {
-    automerge: false,
+  dependencyDashboard: false,
+  lockFileMaintenance: {
+    enabled: false,
   },
-  minimumReleaseAge: '3 days',
   osvVulnerabilityAlerts: true,
-  vulnerabilityAlerts: { enabled: true },
-  rebaseWhen: 'behind-base-branch',
-  logLevelRemap: [
-    {
-      matchMessage: "/Some .+ did not have a releaseTimestamp, but as we're running with minimumReleaseAgeBehaviour=timestamp-optional, proceeding/",
-      newLogLevel: 'info',
-    },
-  ],
   packageRules: [
     {
-      // Image CVE fixes keep the 1 day wait. Routine updates wait 3 days.
-      matchManagers: ['docker', 'dockerfile', 'helm', 'helm-values'],
-      minimumReleaseAge: '1 day',
-      minimumReleaseAgeBehaviour: 'timestamp-optional',
+      description: 'Disable all non-vulnerability updates',
+      enabled: false,
+      matchPackageNames: [
+        '*',
+      ],
     },
     {
-      matchPackageNames: ['github.com/go-logr/stdr'],
-      abandonmentThreshold: null, // Never mark as abandoned
-    },
-    {
-      matchPackageNames: ['sigs.k8s.io/yaml'],
-      abandonmentThreshold: null, // Stable k8s lib; low churn, not dead
-    },
-    {
-      matchManagers: ['github-actions'],
-      semanticCommitType: 'ci', // Action-only weeks must not ship
+      description: 'Vulnerability fixes: immediate and automerged',
+      matchJsonata: [
+        '$exists(vulnerabilityFixVersion) or $exists(isVulnerabilityAlert)',
+      ],
+      enabled: true,
+      automerge: true,
+      minimumReleaseAge: null,
     },
   ],
+  vulnerabilityAlerts: {
+    enabled: true,
+  },
 }
