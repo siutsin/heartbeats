@@ -36,5 +36,12 @@
       matchManagers: ['github-actions'],
       semanticCommitType: 'ci', // Action-only weeks must not ship
     },
+    {
+      // Vulnerability fixes ship at once. The age wait stays for all other updates.
+      matchJsonata: [
+        '$exists(vulnerabilityFixVersion) or $exists(isVulnerabilityAlert)',
+      ],
+      minimumReleaseAge: null,
+    },
   ],
 }
