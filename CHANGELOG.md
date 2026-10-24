@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.218.9](https://github.com/siutsin/heartbeats/compare/v0.218.8...v0.218.9) (2026-10-24)
+
+
+### Miscellaneous
+
+* **deps:** update dependency go to v1.27.3 ([#666](https://github.com/siutsin/heartbeats/issues/666)) ([9d6ffac](https://github.com/siutsin/heartbeats/commit/9d6ffac90023147cb5e40278aa0aa06c6e12f619))
+* **deps:** update dependency golangci-lint to v2.15.0 ([#672](https://github.com/siutsin/heartbeats/issues/672)) ([6eb7a22](https://github.com/siutsin/heartbeats/commit/6eb7a228cb7ddbddc5e9104371c991c874e3ed8e))
+* **deps:** update docker.io/golang docker tag to v1.27.3 ([#668](https://github.com/siutsin/heartbeats/issues/668)) ([22e9558](https://github.com/siutsin/heartbeats/commit/22e955860ae05540be9ae75105d6b66156842825))
+* **deps:** update gcr.io/distroless/static:nonroot docker digest to 18f4cc2 ([#681](https://github.com/siutsin/heartbeats/issues/681)) ([209d77a](https://github.com/siutsin/heartbeats/commit/209d77a6179ec37ba840c6b6e6dcc5b5a556b998))
+* **deps:** update gcr.io/distroless/static:nonroot docker digest to d620678 ([#679](https://github.com/siutsin/heartbeats/issues/679)) ([0d97294](https://github.com/siutsin/heartbeats/commit/0d972944dd816d719fb22470cf5fadf0150fcfc1))
+* **deps:** update module github.com/google/cel-go to v0.30.0 [security] ([#673](https://github.com/siutsin/heartbeats/issues/673)) ([3f5a155](https://github.com/siutsin/heartbeats/commit/3f5a15583960353f779c2031ac4c5cb2d17d869c))
+* **deps:** update module go:sigs.k8s.io/controller-tools/cmd/controller-gen to v0.23.0 ([#676](https://github.com/siutsin/heartbeats/issues/676)) ([d06309d](https://github.com/siutsin/heartbeats/commit/d06309d2d5cad36f19465a9efe50b7c6e790eded))
+* **deps:** update module golang.org/x/net to v0.60.0 [security] ([#674](https://github.com/siutsin/heartbeats/issues/674)) ([a097683](https://github.com/siutsin/heartbeats/commit/a097683076ab759210dcafc526d0421835d1e12f))
+* reduce Renovate minimumReleaseAge to 1 day ([34b3f6f](https://github.com/siutsin/heartbeats/commit/34b3f6ff143c06ca6a39e9e0d10df1a3ee45c6ed))
+* silence Renovate timestamp-optional warning ([#678](https://github.com/siutsin/heartbeats/issues/678)) ([f0034a1](https://github.com/siutsin/heartbeats/commit/f0034a1541c97be79a836a618ecaf79e2eb25944))
+* tier Renovate minimum release age (3 days routine, 1 day images) ([#670](https://github.com/siutsin/heartbeats/issues/670)) ([b5267ce](https://github.com/siutsin/heartbeats/commit/b5267cea6f33bfe809f2ff451eaf85bf8cf84879))
+* widen Renovate 1-day rule to helm and dockerfile ([#675](https://github.com/siutsin/heartbeats/issues/675)) ([6d6c5f8](https://github.com/siutsin/heartbeats/commit/6d6c5f885b31c1bb5f152eb37e3f330c99a4e243))
+
 ## [0.218.8](https://github.com/siutsin/heartbeats/compare/v0.218.7...v0.218.8) (2026-10-21)
 
 
