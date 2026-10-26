@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.218.10](https://github.com/siutsin/heartbeats/compare/v0.218.9...v0.218.10) (2026-10-26)
+
+
+### Miscellaneous
+
+* restore renovate.json5 policy, vulnerability fixes immediate ([#685](https://github.com/siutsin/heartbeats/issues/685)) ([f2d88fd](https://github.com/siutsin/heartbeats/commit/f2d88fd4b236563020d4f004f3e1e7d22c4b296c))
+
 ## [0.218.9](https://github.com/siutsin/heartbeats/compare/v0.218.8...v0.218.9) (2026-10-24)
 
 
