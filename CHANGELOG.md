@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.218.11](https://github.com/siutsin/heartbeats/compare/v0.218.10...v0.218.11) (2026-10-28)
+
+
+### Miscellaneous
+
+* **deps:** update module golang.org/x/net to v0.62.0 [security] ([#696](https://github.com/siutsin/heartbeats/issues/696)) ([63ad23b](https://github.com/siutsin/heartbeats/commit/63ad23bf0ada7e5b90fb4c4d141be685e95d4cb2))
+
 ## [0.218.10](https://github.com/siutsin/heartbeats/compare/v0.218.9...v0.218.10) (2026-10-26)
 
 
