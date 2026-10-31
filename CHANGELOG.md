@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.218.12](https://github.com/siutsin/heartbeats/compare/v0.218.11...v0.218.12) (2026-10-31)
+
+
+### Bug Fixes
+
+* **deps:** update kubernetes monorepo to v0.37.2 ([#705](https://github.com/siutsin/heartbeats/issues/705)) ([ef9839d](https://github.com/siutsin/heartbeats/commit/ef9839d4d5002c1f05671fc0bf25ac2fdfe5efd0))
+* **deps:** update module k8s.io/client-go to v0.37.2 ([#706](https://github.com/siutsin/heartbeats/issues/706)) ([bb92b00](https://github.com/siutsin/heartbeats/commit/bb92b00643eb8d7a16d8a1e8d098a3c62a98b7bd))
+
+
+### Miscellaneous
+
+* **deps:** update dependency kubectl to v1.37.2 ([#704](https://github.com/siutsin/heartbeats/issues/704)) ([27cee71](https://github.com/siutsin/heartbeats/commit/27cee71111df23ecd1f9a5162de30160ec7cfd06))
+* **deps:** update docker.io/golang:1.27.3 docker digest to 2920bb1 ([#699](https://github.com/siutsin/heartbeats/issues/699)) ([6e30ba0](https://github.com/siutsin/heartbeats/commit/6e30ba0b986161392890c90d99c3e6e321f8d8e2))
+
 ## [0.218.11](https://github.com/siutsin/heartbeats/compare/v0.218.10...v0.218.11) (2026-10-28)
 
 
