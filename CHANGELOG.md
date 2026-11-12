@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.218.14](https://github.com/siutsin/heartbeats/compare/v0.218.13...v0.218.14) (2026-11-12)
+
+
+### Miscellaneous
+
+* **deps:** update docker.io/golang docker tag to v1.27.4 ([#722](https://github.com/siutsin/heartbeats/issues/722)) ([7c95311](https://github.com/siutsin/heartbeats/commit/7c95311b22380168776821d2c6b2fb0d51c3d226))
+
 ## [0.218.13](https://github.com/siutsin/heartbeats/compare/v0.218.12...v0.218.13) (2026-11-08)
 
 
