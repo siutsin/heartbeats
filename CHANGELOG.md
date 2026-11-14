@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.218.15](https://github.com/siutsin/heartbeats/compare/v0.218.14...v0.218.15) (2026-11-14)
+
+
+### Miscellaneous
+
+* **deps:** update dependency go to v1.27.4 ([#729](https://github.com/siutsin/heartbeats/issues/729)) ([3427e51](https://github.com/siutsin/heartbeats/commit/3427e51429032ef870c47567a6188eec23a60431))
+* **deps:** update docker.io/golang:1.27.4 docker digest to 5e8afd4 ([#725](https://github.com/siutsin/heartbeats/issues/725)) ([11159a3](https://github.com/siutsin/heartbeats/commit/11159a3e420bffabdc1a9b3384ff2b6349da18a3))
+* **deps:** update gcr.io/distroless/static:nonroot docker digest to aafe993 ([#726](https://github.com/siutsin/heartbeats/issues/726)) ([bae052a](https://github.com/siutsin/heartbeats/commit/bae052ad789e3f0a335e396b0c35a8ee78abf87d))
+* **deps:** update module go.opentelemetry.io/otel/sdk to v1.47.0 [security] ([#730](https://github.com/siutsin/heartbeats/issues/730)) ([e603d5a](https://github.com/siutsin/heartbeats/commit/e603d5a433dffd14c74cf96e98891d97f0d4c8c2))
+
 ## [0.218.14](https://github.com/siutsin/heartbeats/compare/v0.218.13...v0.218.14) (2026-11-12)
 
 
