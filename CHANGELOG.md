@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.218.16](https://github.com/siutsin/heartbeats/compare/v0.218.15...v0.218.16) (2026-11-21)
+
+
+### Bug Fixes
+
+* **deps:** update module sigs.k8s.io/controller-runtime to v0.25.3 ([#741](https://github.com/siutsin/heartbeats/issues/741)) ([70ab165](https://github.com/siutsin/heartbeats/commit/70ab165cfd0b9248c59831507bd89f87129293c6))
+* drop invalid Renovate manager names ([#734](https://github.com/siutsin/heartbeats/issues/734)) ([34ca7c3](https://github.com/siutsin/heartbeats/commit/34ca7c3b7db3477fcf7dee2c778ffa5299e18166))
+
+
+### Miscellaneous
+
+* **deps:** update dependency setup-envtest to v0.25.3 ([#740](https://github.com/siutsin/heartbeats/issues/740)) ([c17fe0c](https://github.com/siutsin/heartbeats/commit/c17fe0c2da55ccfa8a65b8023052740c77c49b08))
+* **deps:** update docker.io/golang:1.27.4 docker digest to 205c763 ([#738](https://github.com/siutsin/heartbeats/issues/738)) ([0bbd91b](https://github.com/siutsin/heartbeats/commit/0bbd91ba515a9fda0b57149afce67e934961b971))
+
 ## [0.218.15](https://github.com/siutsin/heartbeats/compare/v0.218.14...v0.218.15) (2026-11-14)
 
 
