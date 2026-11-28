@@ -19,4 +19,4 @@ jobs:
           delete-untagged: true
           delete-ghost-images: true
           older-than: 3 months
-          keep-n-tagged: 10
+          keep-n-tagged: 100
