@@ -4,6 +4,7 @@
     'config:best-practices',
   ],
   automerge: true,
+  semanticCommits: "enabled",
   major: {
     automerge: false,
   },
