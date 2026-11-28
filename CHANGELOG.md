@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.218.17](https://github.com/siutsin/heartbeats/compare/v0.218.16...v0.218.17) (2026-11-28)
+
+
+### Miscellaneous
+
+* **deps:** update docker.io/golang:1.27.4 docker digest to 5f1b98f ([#755](https://github.com/siutsin/heartbeats/issues/755)) ([4b5ca50](https://github.com/siutsin/heartbeats/commit/4b5ca50f602ca35fe1175ec9c523893f0176a16c))
+
 ## [0.218.16](https://github.com/siutsin/heartbeats/compare/v0.218.15...v0.218.16) (2026-11-23)
 
 
