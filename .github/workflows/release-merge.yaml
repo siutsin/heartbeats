@@ -26,7 +26,7 @@ jobs:
 
       - name: Merge pending release PR
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           REPO_OWNER: ${{ github.repository_owner }}
         run: |
           pr=$(gh pr list --label "autorelease: pending" --state open --json number --jq '.[0].number')
